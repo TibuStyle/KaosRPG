@@ -64,4 +64,12 @@
 [aria-busy="true"] { cursor:progress; }
 @media(max-width:640px) { .connection { padding:0 18px; } }
 
-#starting-panel { text-align:center; border-color:var(--accent); }
+
+
+.game-board { display:grid; grid-template-columns:minmax(0,3fr) minmax(220px,1fr); gap:20px; }
+.narrative-chat { height:52vh; min-height:300px; overflow-y:auto; overscroll-behavior:contain; padding:12px 0; }
+.chat-message { border-bottom:1px solid var(--border); padding:14px 0; white-space:pre-wrap; overflow-wrap:anywhere; }
+.chat-message strong { color:var(--accent); }
+.chat-message[data-kind="ai"] { border-left:3px solid var(--accent); padding-left:12px; }
+.current-turn { border-color:var(--accent) !important; }
+@media(max-width:760px) { .game-board { grid-template-columns:1fr; } .game-board aside { grid-row:1; } }

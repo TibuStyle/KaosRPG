@@ -55,6 +55,7 @@ function controls() {
   }
   byId('leave-button').disabled = disabled;
   byId('start-button').disabled = disabled || !session?.room.canStart;
+  gameControls(disabled);
 }
 function ownMember() { return session?.room.members.find(m => m.id === session.memberId); }
 function request(event, payload) {
@@ -73,6 +74,9 @@ function request(event, payload) {
 }
 function clearSession() {
   token = null; session = null;
+  chatMessages.clear(); pendingAction = null;
+  byId('action-form').reset();
+  byId('narrative-chat').replaceChildren();
   storage.remove('cronicas.token');
   byId('character-form').reset();
   status('character', '');
@@ -85,28 +89,31 @@ function clearSession() {
 const labels = {
   high: 'Alta Magia', low: 'Baja Magia', none: 'Sin Magia',
   epic: 'Épico', dark: 'Oscuro/Letal', comic: 'Cómico',
-  live: 'En vivo', async: 'Asíncrono/Foro', story: 'Modo Historia', relentless: 'Modo Implacable'
+  story: 'Modo Historia', relentless: 'Modo Implacable'
 };
 function render(room) {
   if (!session) return;
   session.room = room;
   byId('session-code').textContent = room.code;
   byId('session-role').textContent = session.isHost ? 'Anfitrión' : 'Jugador';
-  const starting = room.phase === 'starting';
-  byId('session-title').textContent = starting ? 'La partida está comenzando...' :
+  const starting = room.phase === 'playing';
+  byId('session-title').textContent = starting ? 'Vista de Partida' :
     (session.isHost ? 'Sala de Espera' : 'Creación de Personaje');
   byId('character-panel').hidden = session.isHost || starting;
   byId('starting-panel').hidden = !starting;
   byId('start-button').hidden = !session.isHost || starting;
   byId('leave-button').textContent = session.isHost ? 'Cerrar sala para todos' : 'Salir de la sala';
+  byId('leave-button').hidden = starting && !session.isHost;
   const w = room.world;
-  byId('world-summary').textContent = `${w.storyName}\n${[w.magicLevel, w.adventureTone, w.turnPace, w.mortality].map(v => labels[v] || v).join(' · ')}\nPremisa: ${w.premise || 'No especificada'}\nLíneas rojas: ${w.redLines || 'No especificadas'}\nCaduca: ${new Date(room.expiresAt).toLocaleString()}`;
+  byId('world-summary').textContent = `${w.storyName}\n${[w.magicLevel, w.adventureTone, w.mortality].map(v => labels[v] || v).join(' · ')}\nPremisa: ${w.premise || 'No especificada'}\nLíneas rojas: ${w.redLines || 'No especificadas'}\nMotor asíncrono estricto · sin caducidad automática`;
   const nodes = room.members.map(member => {
     const item = document.createElement('li');
-    item.textContent = `${member.name}${member.isHost ? ' · Anfitrión' : ''}${member.id === session.memberId ? ' · Tú' : ''} — ${member.connected ? 'Conectado' : 'Desconectado (reserva temporal)'}${!member.isHost ? ` · ${{ draft: 'Creando personaje', evaluating: 'Evaluando con el DM...', rejected: 'Rechazado: requiere cambios', approved: 'Aprobado' }[member.characterStatus] || 'Creando personaje'}${member.characterName ? ': ' + member.characterName : ''}` : ''}`;
+    item.textContent = `${member.name}${member.isHost ? ' · Anfitrión' : ''}${member.id === session.memberId ? ' · Tú' : ''} — ${member.connected ? 'Conectado' : 'Desconectado (turno conservado)'}${!member.isHost ? ` · ${{ draft: 'Creando personaje', evaluating: 'Evaluando con el DM...', rejected: 'Rechazado: requiere cambios', approved: 'Aprobado' }[member.characterStatus] || 'Creando personaje'}${member.characterName ? ': ' + member.characterName : ''}` : ''}`;
     return item;
   });
   byId('member-list').replaceChildren(...nodes);
+  byId('member-list').parentElement.hidden = starting;
+  renderGame(room);
   if (ownMember()?.characterStatus === 'evaluating') status('character', 'El DM está evaluando tu personaje...');
   controls();
 }
@@ -154,7 +161,7 @@ function connect() {
     connection('No se puede conectar: revisa URL, HTTPS y FRONTEND_ORIGINS del servidor.'); controls();
   });
   socket.on('disconnect', () => {
-    connection('Sin conexión. Reconexión automática; reserva de sesión de 15 minutos.'); controls();
+    connection('Sin conexión. Reconexión automática; partida y turno conservados en SQLite.'); controls();
   });
   socket.on('room:state', room => {
     if (session && room.code === session.room.code) {
@@ -294,6 +301,83 @@ byId('leave-button').addEventListener('click', async () => {
     await request('room:leave', {});
     clearSession(); showScreen('lobby');
   } catch (error) { status('session', error.message, true); }
+  finally { busy = false; controls(); }
+});
+// El servidor sigue siendo la autoridad aunque se manipule el DOM.
+const chatMessages = new Map();
+let pendingAction = null;
+function gameControls(disabled) {
+  const t = session?.room.turn;
+  const mine = session?.room.phase === 'playing' && t?.memberId === session.memberId;
+  byId('action-text').disabled = disabled || !mine || Boolean(t?.action);
+  byId('action-send').disabled = disabled || !mine || Boolean(t?.action);
+  byId('action-retry').hidden = !mine || t?.action?.status !== 'failed';
+  byId('action-retry').disabled = disabled;
+  byId('history-button').disabled = disabled || !chatMessages.size;
+}
+function drawChat() {
+  const container = byId('narrative-chat');
+  const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+  const nodes = [...chatMessages.values()].sort((a,b) => a.id-b.id).map(message => {
+    const item = document.createElement('article'); item.className = 'chat-message'; item.dataset.kind = message.kind;
+    const title = document.createElement('strong'); title.textContent = message.authorName + ' · ' + new Date(message.createdAt).toLocaleString();
+    const body = document.createElement('p'); body.textContent = message.text;
+    item.append(title,body); return item;
+  });
+  container.replaceChildren(...nodes);
+  if (nearBottom) container.scrollTop = container.scrollHeight;
+}
+function renderGame(room) {
+  if (room.phase !== 'playing') return;
+  for (const m of room.messages || []) chatMessages.set(m.id,m);
+  drawChat();
+  const t = room.turn;
+  const owner = room.members.find(m => m.id === t.memberId);
+  const mine = t.memberId === session.memberId;
+  byId('turn-status').textContent = t.action?.status === 'pending'
+    ? `El Director IA está narrando el turno de ${owner?.name || 'participante'}...`
+    : t.action?.status === 'failed'
+      ? `La narración se interrumpió. El turno de ${owner?.name} se conserva y su acción puede reintentarse.`
+      : mine ? 'Es tu turno. Describe tu acción.' : `Esperando el turno de ${owner?.name || 'participante'}...${owner?.connected ? '' : ' Está desconectado; no se salta su turno.'}`;
+  const list = t.order.map((id,index) => {
+    const m = room.members.find(x => x.id === id),item = document.createElement('li');
+    if(id === t.memberId) item.className = 'current-turn';
+    item.textContent = `${index+1}. ${m?.name || 'Participante'}${m?.isHost ? ' (Director)' : ''} — ${m?.connected ? 'Conectado' : 'Desconectado'}${id === t.memberId ? ' · Turno actual' : ''}`;
+    return item;
+  });
+  byId('game-member-list').replaceChildren(...list);
+}
+byId('action-form').addEventListener('submit', event => {
+  event.preventDefault();
+  submit('action-form','action',async () => {
+    const content = byId('action-text').value.trim();
+    const version = session.room.turn.version;
+    // Reusar ID si se perdió el ACK, nunca duplicar la misma solicitud.
+    if(!pendingAction || pendingAction.turnVersion !== version || pendingAction.text !== content) {
+      pendingAction = {id:crypto.randomUUID(),turnVersion:version,text:content};
+    }
+    const result = await request('action:submit',pendingAction);
+    byId('action-text').value = ''; pendingAction = null;
+    status('action',result.status === 'failed' ? 'Acción guardada; reintenta la narración.' : 'Acción guardada en SQLite.');
+  });
+});
+byId('action-retry').addEventListener('click',async () => {
+  if(busy || resuming || !session?.room.turn.action) return;
+  busy = true; controls();
+  try { await request('action:retry',{id:session.room.turn.action.id}); status('action','Reintentando la narración...'); }
+  catch(error) { status('action',error.message,true); }
+  finally { busy = false; controls(); }
+});
+byId('history-button').addEventListener('click',async () => {
+  if(busy || resuming || !chatMessages.size) return;
+  busy = true; controls();
+  try {
+    const before = Math.min(...chatMessages.keys());
+    const data = await request('chat:history',{before});
+    for(const m of data.messages) chatMessages.set(m.id,m);
+    drawChat();
+    status('action',data.messages.length ? 'Mensajes anteriores recuperados.' : 'No hay mensajes anteriores.');
+  } catch(error) { status('action',error.message,true); }
   finally { busy = false; controls(); }
 });
 connect();
