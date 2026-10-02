@@ -1,4 +1,5 @@
 'use strict';
+const diceModuleURL = new URL('./dice-ui.mjs', document.currentScript.src).href;
 const byId = id => document.getElementById(id);
 const panels = { create: byId('panel-create'), join: byId('panel-join') };
 const storage = {
@@ -84,6 +85,7 @@ function clearSession() {
   byId('member-list').replaceChildren();
   byId('session-code').textContent = '';
   byId('world-summary').textContent = '';
+  byId('roll-panel').hidden = true;
   byId('starting-panel').hidden = true; byId('start-button').hidden = true;
 }
 const labels = {
@@ -314,6 +316,9 @@ function gameControls(disabled) {
   byId('action-retry').hidden = !mine || t?.action?.status !== 'failed';
   byId('action-retry').disabled = disabled;
   byId('history-button').disabled = disabled || !chatMessages.size;
+  byId('roll-button').hidden = !mine || t?.action?.stage !== 'awaiting_roll';
+  byId('roll-button').disabled = disabled || rolling;
+  byId('roll-button').textContent = rolling ? 'Dados en movimiento…' : cachedRoll(t?.action?.id) ? 'Enviar tirada guardada' : 'Lanzar Dados';
 }
 function drawChat() {
   const container = byId('narrative-chat');
@@ -331,11 +336,14 @@ function renderGame(room) {
   if (room.phase !== 'playing') return;
   for (const m of room.messages || []) chatMessages.set(m.id,m);
   drawChat();
+  renderRoll(room.turn.action);
   const t = room.turn;
   const owner = room.members.find(m => m.id === t.memberId);
   const mine = t.memberId === session.memberId;
-  byId('turn-status').textContent = t.action?.status === 'pending'
-    ? `El Director IA está narrando el turno de ${owner?.name || 'participante'}...`
+  byId('turn-status').textContent = t.action?.stage === 'awaiting_roll'
+    ? `Esperando la tirada de ${owner?.name || 'participante'}. La configuración está guardada en SQLite.`
+    : t.action?.status === 'pending'
+    ? `${t.action.stage === 'resolution' ? 'El Director IA está resolviendo la tirada' : 'El Director IA está evaluando la acción'} de ${owner?.name || 'participante'}...`
     : t.action?.status === 'failed'
       ? `La narración se interrumpió. El turno de ${owner?.name} se conserva y su acción puede reintentarse.`
       : mine ? 'Es tu turno. Describe tu acción.' : `Esperando el turno de ${owner?.name || 'participante'}...${owner?.connected ? '' : ' Está desconectado; no se salta su turno.'}`;
@@ -347,6 +355,53 @@ function renderGame(room) {
   });
   byId('game-member-list').replaceChildren(...list);
 }
+let rolling = false;
+function cachedRoll(id) {
+  if(!id) return null;
+  try { return JSON.parse(storage.get('cronicas.roll.'+id)); } catch {return null;}
+}
+function renderRoll(action) {
+  const config=action?.pendingRoll;
+  byId('roll-panel').hidden = !config;
+  if(!config) return;
+  byId('roll-prelude').textContent = config.narrativa_previa;
+  byId('roll-dice').textContent = 'Dados: '+config.dados_a_lanzar.join(' + ');
+  const terms=config.modificadores.map(m=>`${m.valor>=0?'+':''}${m.valor}`).join(' ');
+  byId('roll-equation').textContent = `CD final = limitar(1..100, ${config.cd_base} − (${terms || '0'})) = ${config.cd_final}. Éxito: suma ≥ ${config.cd_final}`;
+  const nodes=config.modificadores.map(m=> {
+    const li=document.createElement('li');li.className='mod-'+m.tipo;
+    li.textContent=`${m.nombre}: ${m.valor>0?'+':''}${m.valor} · ${m.tipo} (${m.tipo==='ventaja'?'reduce':'aumenta'} CD)`;
+    return li;
+  });
+  byId('roll-modifiers').replaceChildren(...nodes);
+  const results=action.rollResults || cachedRoll(action.id);
+  byId('roll-result').textContent = results
+    ? `Resultados: ${results.resultados.map(r=>`d${r.caras}: ${r.valor}`).join(', ')}. Total: ${results.total}. ${action.rollResults ? (results.total>=config.cd_final ? 'Éxito.' : 'Fallo.') : 'Pendiente de confirmación en servidor.'}`
+    : 'Tirada pendiente. No se avanza el turno.';
+}
+byId('roll-button').addEventListener('click',async()=> {
+  const action=session?.room.turn.action;
+  if(busy || resuming || rolling || action?.stage!=='awaiting_roll' || session.room.turn.memberId!==session.memberId) return;
+  const expectedToken=token,version=session.room.turn.version;
+  busy=true;rolling=true;controls();status('action','Preparando dados 3D…');
+  try {
+    let saved=cachedRoll(action.id);
+    if(!saved) {
+      const {rollDice}=await import(diceModuleURL);
+      saved=await rollDice(action.pendingRoll.dados_a_lanzar);
+      // Guardar antes del envío: ACK perdido o recarga reenvía, nunca vuelve a lanzar.
+      storage.set('cronicas.roll.'+action.id,JSON.stringify(saved));
+    }
+    if(token!==expectedToken || !session) throw new Error('La sesión ha cambiado.');
+    renderRoll(session.room.turn.action);
+    await request('roll:submit',{id:action.id,turnVersion:version,...saved});
+    status('action','Tirada guardada en SQLite. Esperando consecuencia final…');
+    await recoverDecision(); // Recupera state incluso si se perdió un evento.
+  } catch(error) {
+    status('action',error.message+' Si hay resultados guardados, vuelve a enviarlos; no repitas el lanzamiento.',true);
+    if(token===expectedToken && socket?.connected) await recoverDecision();
+  } finally {rolling=false;busy=false;controls();}
+});
 byId('action-form').addEventListener('submit', event => {
   event.preventDefault();
   submit('action-form','action',async () => {

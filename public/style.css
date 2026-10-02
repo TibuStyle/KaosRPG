@@ -73,3 +73,11 @@
 .chat-message[data-kind="ai"] { border-left:3px solid var(--accent); padding-left:12px; }
 .current-turn { border-color:var(--accent) !important; }
 @media(max-width:760px) { .game-board { grid-template-columns:1fr; } .game-board aside { grid-row:1; } }
+
+.roll-panel { margin:16px 0; border:1px solid var(--border); border-radius:12px; padding:16px; }
+.roll-equation { font:700 1.1rem ui-monospace,monospace; overflow-wrap:anywhere; }
+.mod-ventaja { color:#8ee6a1; }
+.mod-desventaja { color:#ff9b9b; }
+#dice-stage { position:relative; width:100%; height:300px; overflow:hidden; margin-top:16px; background:#090e17; border-radius:12px; }
+#dice-stage canvas { width:100%; height:100%; display:block; }
+@media(max-width:640px) { #dice-stage { height:240px; } }

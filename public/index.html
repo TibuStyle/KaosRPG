@@ -11,7 +11,7 @@
   <script defer src="./main.js"></script>
 </head>
 <body>
-  <header><span class="brand">CRÓNICAS</span><span class="badge">v1.4 · Asíncrono persistente</span></header>
+  <header><span class="brand">CRÓNICAS</span><span class="badge">v1.5 · Asíncrono persistente</span></header>
   <p id="connection-status" class="connection muted" role="status" aria-live="polite">Preparando conexión…</p>
   <main>
     <section id="screen-home" class="screen hero" aria-labelledby="home-title">
@@ -103,6 +103,17 @@
             <button id="history-button" class="btn" type="button">Cargar mensajes anteriores</button>
             <div id="narrative-chat" class="narrative-chat" role="log" aria-live="polite" aria-relevant="additions"></div>
             <p id="turn-status" class="notice" role="status"></p>
+            <section id="roll-panel" class="roll-panel" aria-labelledby="roll-title" hidden>
+              <h4 id="roll-title">Prueba de conflicto</h4>
+              <p id="roll-prelude"></p>
+              <p id="roll-dice"></p>
+              <p id="roll-equation" class="roll-equation"></p>
+              <ul id="roll-modifiers"></ul>
+              <p id="roll-result" role="status"></p>
+              <button id="roll-button" class="btn btn-primary" type="button" disabled>Lanzar Dados</button>
+              <p class="help">Los ajustes ocultan el nombre de los rasgos. Todos los dados suman para éxito; no son daño separado. Resultado cliente validado, no antitrampas.</p>
+              <div id="dice-stage" aria-label="Mesa de dados 3D"></div>
+            </section>
             <form id="action-form" class="form-grid">
               <label for="action-text">Acción del turno</label>
               <input id="action-text" name="text" maxlength="2000" required autocomplete="off" disabled>
@@ -118,7 +129,7 @@
     </section>
     <noscript><p class="notice">Activa JavaScript para jugar.</p></noscript>
   </main>
-  <footer>SQLite · cola asíncrona estricta · DM narrativo · tiradas y mapas pendientes</footer>
+  <footer>SQLite · cola asíncrona estricta · tiradas dinámicas · mapas pendientes</footer>
   <dialog id="options-dialog" aria-labelledby="options-title">
     <h2 id="options-title">Opciones / Servidor</h2>
     <form id="server-form" class="form-grid">
@@ -126,7 +137,7 @@
       <button class="btn btn-primary" type="submit">Guardar y conectar</button>
       <p id="server-status" class="status" role="status"></p>
     </form>
-    <p class="help">Audio y dados pendientes. Se respeta el movimiento reducido del sistema.</p>
+    <p class="help">Audio pendiente. Dados 3D usan WebGL y workers locales. Se respeta el movimiento reducido del sistema.</p>
     <form method="dialog"><button class="btn" autofocus>Cerrar</button></form>
   </dialog>
 </body>
