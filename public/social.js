@@ -84,7 +84,7 @@ async function openSheet(id,show=true) {
 function listText(items,empty) {return (items.length?items:[empty]).map(text=>{const li=document.createElement('li');li.textContent=text;return li;});}
 function renderSocial(room) {
   const target=byId('social-target'),prior=target.value;
-  const options=[new Option('Global (Off-Rol)',''),...room.members.filter(m=>m.id!==session.memberId).map(m=>new Option('Susurro → '+m.name,m.id))];
+  const options=[new Option('Global (Off-Rol)',''),...room.members.filter(m=>m.id!==session.memberId&&!m.isNPC).map(m=>new Option('Susurro → '+m.name,m.id))];
   target.replaceChildren(...options);if(options.some(o=>o.value===prior))target.value=prior;
   byId('social-send').disabled=socialSending||!socket?.connected;
   if(sheetMember&&byId('sheet-dialog').open)void openSheet(sheetMember,false);
@@ -125,3 +125,4 @@ function resetSocial() {
   for(const id of ['inventory-dialog','sheet-dialog'])if(byId(id).open)byId(id).close();
   byId('sheet-avatar').removeAttribute('src');byId('sheet-history').textContent='';
 }
+

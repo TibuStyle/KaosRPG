@@ -55,6 +55,10 @@ function controls() {
     byId(id).setAttribute('aria-busy', String(busy || resuming));
   }
   byId('leave-button').disabled = disabled;
+  byId('wipe-button').disabled=disabled;
+  byId('npc-button').disabled=disabled;
+  byId('npc-save').disabled=disabled;
+  byId('random-premise-button').disabled=disabled;
   byId('start-button').disabled = disabled || !session?.room.canStart;
   gameControls(disabled);
   byId('social-send').disabled=socialSending||!session||!socket?.connected||resuming;
@@ -65,7 +69,7 @@ function request(event, payload) {
     if (!socket?.connected) return reject(new Error('Sin conexión con el servidor.'));
     const requestSocket = socket;
     const version = generation;
-    requestSocket.timeout(event === 'character:submit' ? 60000 : 10000).emit(event, payload, (error, response) => {
+    requestSocket.timeout(['character:submit','premise:generate'].includes(event) ? 60000 : 10000).emit(event, payload, (error, response) => {
       if (version !== generation || requestSocket !== socket) return reject(new Error('Conexión sustituida.'));
       if (event === 'character:submit' && !session) return reject(new Error('La sala ya no está activa.'));
       if (error) return reject(new Error('Sin confirmación del servidor. Comprueba la conexión antes de reintentar.'));
@@ -76,6 +80,8 @@ function request(event, payload) {
 }
 function clearSession() {
   token = null; session = null;
+  byId('npc-dialog').close();
+  byId('npc-form').reset();
   chatMessages.clear(); pendingAction = null;
   resetSocial();
   byId('action-form').reset();
@@ -106,13 +112,15 @@ function render(room) {
   byId('character-panel').hidden = session.isHost || starting;
   byId('starting-panel').hidden = !starting;
   byId('start-button').hidden = !session.isHost || starting;
+  byId('wipe-button').hidden=!session.isHost;
+  byId('npc-button').hidden=!session.isHost;
   byId('leave-button').textContent = session.isHost ? 'Cerrar sala para todos' : 'Salir de la sala';
   byId('leave-button').hidden = starting && !session.isHost;
   const w = room.world;
   byId('world-summary').textContent = `${w.storyName}\n${[w.magicLevel, w.adventureTone, w.mortality].map(v => labels[v] || v).join(' · ')}\nPremisa: ${w.premise || 'No especificada'}\nLíneas rojas: ${w.redLines || 'No especificadas'}\nMotor asíncrono estricto · sin caducidad automática`;
   const nodes = room.members.map(member => {
     const item = document.createElement('li');
-    item.textContent = `${member.name}${member.isHost ? ' · Anfitrión' : ''}${member.id === session.memberId ? ' · Tú' : ''} — ${member.connected ? 'Conectado' : 'Desconectado (turno conservado)'}${!member.isHost ? ` · ${{ draft: 'Creando personaje', evaluating: 'Evaluando con el DM...', rejected: 'Rechazado: requiere cambios', approved: 'Aprobado' }[member.characterStatus] || 'Creando personaje'}${member.characterName ? ': ' + member.characterName : ''}` : ''}`;
+    item.textContent = `${member.name}${member.isNPC ? ' · NPC (controlado por Director)' : ''}${member.isHost ? ' · Anfitrión' : ''}${member.id === session.memberId ? ' · Tú' : ''} — ${member.connected ? 'Conectado' : 'Desconectado (turno conservado)'}${!member.isHost ? ` · ${{ draft: 'Creando personaje', evaluating: 'Evaluando con el DM...', rejected: 'Rechazado: requiere cambios', approved: 'Aprobado' }[member.characterStatus] || 'Creando personaje'}${member.characterName ? ': ' + member.characterName : ''}` : ''}`;
     return item;
   });
   byId('member-list').replaceChildren(...nodes);
@@ -194,7 +202,7 @@ function showCharacterDecision(character) {
     approved: 'El DM aprueba tu personaje: ', rejected: 'El DM rechaza tu personaje: ',
     evaluating: 'El DM sigue evaluando tu personaje...', draft: 'Borrador pendiente de evaluación. '
   };
-  status('character', (messages[character.status] || '') + (character.narrative || ''),
+  status('character', character.status==='rejected' ? 'Rechazado: '+(character.motivo_rechazo_narrativo||character.narrative||'Revisa tu historia.') : (messages[character.status] || '') + (character.narrative || ''),
     character.status === 'rejected');
 }
 async function recoverDecision() {
@@ -241,9 +249,45 @@ byId('server-form').addEventListener('submit', event => {
     status('server', ''); byId('options-dialog').close(); connect();
   } catch (error) { status('server', error.message, true); }
 });
-byId('random-premise-button').addEventListener('click', () => {
-  byId('story-premise').value = 'Un grupo de mercenarios busca una reliquia en ruinas subterráneas.';
-  status('random', 'Premisa fija insertada; no se utilizó IA.'); status('create', '');
+byId('random-premise-button').addEventListener('click',async () => {
+  if(busy||resuming||session)return;
+  if(!window.confirm('¿Enviar la configuración de campaña a Gemini para generar una premisa? Consume API y sustituirá el texto si no lo editas mientras tanto.'))return;
+  const original=byId('story-premise').value;
+  busy=true;controls();status('random','El escriba está forjando tu campaña…');
+  try {
+    const world={storyName:byId('story-name').value.trim()||'Nueva campaña',premise:original,
+      redLines:byId('red-lines').value,magicLevel:byId('magic-level').value,
+      adventureTone:byId('adventure-tone').value,mortality:byId('mortality').value};
+    const data=await request('premise:generate',{world});
+    if(session)throw new Error('La sesión cambió; no se insertó la premisa.');
+    if(byId('story-premise').value!==original)throw new Error('Editaste el texto durante la generación; no se sobrescribió.');
+    byId('story-premise').value=data.premise;
+    status('random','Premisa generada por Gemini. Revísala antes de crear la sala.');
+  } catch(error) {status('random',error.message,true);}
+  finally {busy=false;controls();}
+});
+byId('wipe-button').addEventListener('click',async()=> {
+  if(busy||resuming||!session?.isHost)return;
+  const code=window.prompt('BORRADO IRREVERSIBLE: se eliminarán sala, personajes, NPCs, sesiones, chat, acciones y tiradas. Escribe el código '+session.room.code+' para confirmar.');
+  if(code!==session.room.code)return;
+  busy=true;controls();
+  try {await request('room:wipe',{confirmCode:code});clearSession();showScreen('lobby');status('join','Sala borrada.');}
+  catch(error){if(session)status('session',error.message,true);}
+  finally {busy=false;controls();}
+});
+byId('npc-button').addEventListener('click',()=> {
+  if(!session?.isHost||busy||resuming)return;
+  status('npc','');byId('npc-dialog').showModal();byId('npc-name').focus();
+});
+byId('npc-close').addEventListener('click',()=>byId('npc-dialog').close());
+byId('npc-form').addEventListener('submit',async event=> {
+  event.preventDefault();if(busy||resuming||!session?.isHost)return;
+  busy=true;controls();status('npc','Añadiendo NPC…');
+  try {
+    await request('npc:add',{name:byId('npc-name').value,history:byId('npc-history').value});
+    byId('npc-form').reset();byId('npc-dialog').close();status('session','NPC añadido al final de la cola.');
+  }catch(error){status('npc',error.message,true);}
+  finally{busy=false;controls();}
 });
 for (const [id, target] of [['create-form', 'create'], ['join-form', 'join'], ['character-form', 'character']]) {
   byId(id).addEventListener('input', event => {
@@ -317,9 +361,16 @@ byId('leave-button').addEventListener('click', async () => {
 // El servidor sigue siendo la autoridad aunque se manipule el DOM.
 const chatMessages = new Map();
 let pendingAction = null;
+function ownsTurn() {
+  const t=session?.room.turn;
+  return Boolean(session&&(t?.memberId===session.memberId || session.isHost&&session.room.members.some(m=>m.id===t?.memberId&&m.isNPC)));
+}
+function turnTarget() {
+  return ownsTurn()&&session.room.turn.memberId!==session.memberId ? {memberId:session.room.turn.memberId} : {};
+}
 function gameControls(disabled) {
   const t = session?.room.turn;
-  const mine = session?.room.phase === 'playing' && t?.memberId === session.memberId;
+  const mine = session?.room.phase === 'playing' && ownsTurn();
   byId('action-text').disabled = disabled || !mine || Boolean(t?.action);
   byId('action-send').disabled = disabled || !mine || Boolean(t?.action);
   byId('action-retry').hidden = !mine || t?.action?.status !== 'failed';
@@ -348,18 +399,18 @@ function renderGame(room) {
   renderRoll(room.turn.action);
   const t = room.turn;
   const owner = room.members.find(m => m.id === t.memberId);
-  const mine = t.memberId === session.memberId;
+  const mine = ownsTurn();
   byId('turn-status').textContent = t.action?.stage === 'awaiting_roll'
     ? `Esperando la tirada de ${owner?.name || 'participante'}. La configuración está guardada en SQLite.`
     : t.action?.status === 'pending'
     ? `${t.action.stage === 'resolution' ? 'El Director IA está resolviendo la tirada' : 'El Director IA está evaluando la acción'} de ${owner?.name || 'participante'}...`
     : t.action?.status === 'failed'
       ? `La narración se interrumpió. El turno de ${owner?.name} se conserva y su acción puede reintentarse.`
-      : mine ? 'Es tu turno. Describe tu acción.' : `Esperando el turno de ${owner?.name || 'participante'}...${owner?.connected ? '' : ' Está desconectado; no se salta su turno.'}`;
+      : mine ? (owner?.isNPC ? 'Controlas a '+owner.name+'. Escribe su acción como Director.' : 'Es tu turno. Describe tu acción.') : `Esperando el turno de ${owner?.name || 'participante'}...${owner?.connected ? '' : ' Está desconectado; no se salta su turno.'}`;
   const list = t.order.map((id,index) => {
     const m = room.members.find(x => x.id === id),item = document.createElement('li');
     if(id === t.memberId) item.className = 'current-turn';
-    item.textContent = `${index+1}. ${m?.name || 'Participante'}${m?.isHost ? ' (Director)' : ''} — ${m?.connected ? 'Conectado' : 'Desconectado'}${id === t.memberId ? ' · Turno actual' : ''}`;
+    item.textContent = `${index+1}. ${m?.name || 'Participante'}${m?.isHost ? ' (Director)' : m?.isNPC ? ' (NPC · Director)' : ''} — ${m?.connected ? 'Conectado' : 'Desconectado'}${id === t.memberId ? ' · Turno actual' : ''}`;
     return item;
   });
   byId('game-member-list').replaceChildren(...list);
@@ -391,7 +442,7 @@ function renderRoll(action) {
 }
 byId('roll-button').addEventListener('click',async()=> {
   const action=session?.room.turn.action;
-  if(busy || resuming || rolling || action?.stage!=='awaiting_roll' || session.room.turn.memberId!==session.memberId) return;
+  if(busy || resuming || rolling || action?.stage!=='awaiting_roll' || !ownsTurn()) return;
   const expectedToken=token,version=session.room.turn.version;
   busy=true;rolling=true;controls();status('action','Preparando dados 3D…');
   try {
@@ -404,7 +455,7 @@ byId('roll-button').addEventListener('click',async()=> {
     }
     if(token!==expectedToken || !session) throw new Error('La sesión ha cambiado.');
     renderRoll(session.room.turn.action);
-    await request('roll:submit',{id:action.id,turnVersion:version,...saved});
+    await request('roll:submit',{id:action.id,turnVersion:version,...saved,...turnTarget()});
     status('action','Tirada guardada en SQLite. Esperando consecuencia final…');
     await recoverDecision(); // Recupera state incluso si se perdió un evento.
   } catch(error) {
@@ -419,7 +470,7 @@ byId('action-form').addEventListener('submit', event => {
     const version = session.room.turn.version;
     // Reusar ID si se perdió el ACK, nunca duplicar la misma solicitud.
     if(!pendingAction || pendingAction.turnVersion !== version || pendingAction.text !== content) {
-      pendingAction = {id:crypto.randomUUID(),turnVersion:version,text:content};
+      pendingAction = {id:crypto.randomUUID(),turnVersion:version,text:content,...turnTarget()};
     }
     const result = await request('action:submit',pendingAction);
     byId('action-text').value = ''; pendingAction = null;
@@ -429,7 +480,7 @@ byId('action-form').addEventListener('submit', event => {
 byId('action-retry').addEventListener('click',async () => {
   if(busy || resuming || !session?.room.turn.action) return;
   busy = true; controls();
-  try { await request('action:retry',{id:session.room.turn.action.id}); status('action','Reintentando la narración...'); }
+  try { await request('action:retry',{id:session.room.turn.action.id,...turnTarget()}); status('action','Reintentando la narración...'); }
   catch(error) { status('action',error.message,true); }
   finally { busy = false; controls(); }
 });
@@ -447,3 +498,4 @@ byId('history-button').addEventListener('click',async () => {
 });
 initSocial();
 connect();
+

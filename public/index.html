@@ -12,7 +12,7 @@
   <script defer src="./main.js"></script>
 </head>
 <body>
-  <header><span class="brand">CRÓNICAS</span><span class="badge">v1.7 · La Taberna</span></header>
+  <header><span class="brand">CRÓNICAS</span><span class="badge">v1.8 · Forja del Director</span></header>
   <p id="connection-status" class="connection muted" role="status" aria-live="polite">Preparando conexión…</p>
   <main>
     <section id="screen-home" class="screen hero" aria-labelledby="home-title">
@@ -50,9 +50,9 @@
           <div><label for="host-name">Tu nombre como anfitrión</label><input id="host-name" name="playerName" maxlength="40" required autocomplete="nickname"></div>
           <div><label for="story-name">Nombre del juego</label><input id="story-name" name="storyName" maxlength="80" required placeholder="Las cenizas de Valdoria"></div>
           <div>
-            <div class="field-heading"><label for="story-premise">Premisa (opcional)</label><button id="random-premise-button" class="btn btn-random" type="button" aria-describedby="random-help">⚄ Random</button></div>
+            <div class="field-heading"><label for="story-premise">Premisa (opcional)</label><button id="random-premise-button" class="btn btn-random" type="button" aria-describedby="random-help">✦ Generar premisa</button></div>
             <textarea id="story-premise" name="premise" maxlength="2000" aria-describedby="random-help"></textarea>
-            <p id="random-help" class="help">Sustituye la premisa por un texto fijo de prueba; no usa IA.</p>
+            <p id="random-help" class="help">Gemini crea 3 o 4 párrafos según tus reglas. Envía nombre, premisa y líneas rojas al proveedor; consume API. Revisa el resultado antes de crear la sala.</p>
             <p id="random-status" class="status" role="status"></p>
           </div>
           <div class="host-settings">
@@ -96,7 +96,7 @@
           <label class="consent"><input type="checkbox" id="public-consent" required> Entiendo que mi historia aprobada se publicará al grupo. No contiene información secreta.</label>
           <label class="consent"><input type="checkbox" id="portrait-consent" required> Autorizo enviar mi apariencia estética y reglas generales del mundo a Pollinations. La URL del retrato contiene el prompt; no incluiré datos sensibles.</label>
           <button class="btn btn-primary" type="submit">Enviar Personaje</button>
-          <p id="character-status" class="status" role="status" aria-live="polite"></p>
+          <p id="character-status" class="status" role="alert" aria-live="polite"></p>
         </form>
       </section>
       <section id="starting-panel" class="panel" aria-labelledby="game-title" hidden>
@@ -141,10 +141,22 @@
           <p id="social-status" class="status" role="status"></p>
         </form>
       </aside>
-      <div class="actions"><button id="start-button" class="btn btn-primary" type="button" hidden disabled>Empezar Aventura</button><button id="leave-button" class="btn" type="button">Salir de la sala</button></div>
+      <div class="actions"><button id="start-button" class="btn btn-primary" type="button" hidden disabled>Empezar Aventura</button><button id="wipe-button" class="btn btn-danger" type="button" hidden>Borrar Sala</button>
+          <button id="npc-button" class="btn" type="button" hidden>Añadir NPC</button>
+          <button id="leave-button" class="btn" type="button">Salir de la sala</button></div>
     </section>
     <noscript><p class="notice">Activa JavaScript para jugar.</p></noscript>
   </main>
+  <dialog id="npc-dialog" class="parchment" aria-labelledby="npc-title">
+    <div class="panel-heading"><h2 id="npc-title">Añadir NPC</h2><button id="npc-close" class="btn" type="button">Cerrar</button></div>
+    <p class="help">El Director asume el balance y lore: este NPC entra aprobado, sin IA ni retrato, al final de la cola. Su historia será pública. Solo tú escribes sus acciones y envías sus tiradas.</p>
+    <form id="npc-form" class="form-grid">
+      <div><label for="npc-name">Nombre</label><input id="npc-name" maxlength="60" required></div>
+      <div><label for="npc-history">Historia pública</label><textarea id="npc-history" maxlength="6000" required></textarea></div>
+      <button id="npc-save" class="btn btn-primary" type="submit">Añadir NPC a la sala</button>
+      <p id="npc-status" class="status" role="alert"></p>
+    </form>
+  </dialog>
   <footer>SQLite · cola asíncrona estricta · tiradas dinámicas · mapas pendientes</footer>
   <dialog id="options-dialog" aria-labelledby="options-title">
     <h2 id="options-title">Opciones / Servidor</h2>
@@ -183,3 +195,4 @@
   </dialog>
 </body>
 </html>
+

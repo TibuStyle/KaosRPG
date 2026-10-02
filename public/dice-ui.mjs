@@ -46,3 +46,4 @@ export async function rollDice(notations) {
     return normalize(results,notations);
   } finally {clearTimeout(timeout);activeRoll=null;}
 }
+
