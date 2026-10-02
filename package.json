@@ -1,8 +1,8 @@
 {
   "name": "cronicas-rpg",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "private": true,
-  "description": "Salas cooperativas y aprobación de personajes con DM de IA",
+  "description": "RPG asíncrono persistente con SQLite y turnos estrictos",
   "main": "server.js",
   "engines": {
     "node": ">=22"
@@ -10,7 +10,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "check": "node --check server.js && node --check public/main.js",
+    "check": "node --check server.js && node --check db.js && node --check approval.js && node --check public/main.js",
     "test": "node --test test/*.test.js"
   },
   "dependencies": {
@@ -20,6 +20,10 @@
     "express-rate-limit": "7.5.0",
     "helmet": "8.1.0",
     "socket.io": "4.8.1",
-    "openai": "4.77.0"
+    "openai": "4.77.0",
+    "better-sqlite3": "11.10.0"
+  },
+  "devDependencies": {
+    "socket.io-client": "4.8.1"
   }
 }

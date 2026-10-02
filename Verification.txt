@@ -1,23 +1,28 @@
-CRÓNICAS 1.3 — VERIFICACIÓN DE ENTREGA
+CRÓNICAS 1.4 — VERIFICACIÓN DE ENTREGA
 
-Realizado en este entorno:
-- Lectura de ambos originales y separación de las siete secciones entregadas.
-- JSON de package.json válido; dependencia openai 4.77.0 y versión 1.3.0.
-- Comprobación automática de IDs HTML únicos y referencias byId literales.
-- Revisión estática: handler espera promesas, JSON mode activado, proyecciones
-  públicas/privadas no incluyen member.gm, sin innerHTML en frontend.
-- README, .env.example, workflow Pages, pruebas con mocks y notas 1.3 incluidos.
-- Archivo ZIP construido con todo el código y documentación, sin .env real,
-  node_modules ni claves; contenido completo también disponible en TXT.
+REALIZADO
+- Lectura completa de Codigo_completo_v1.3.txt y Patch_Notes_v1.3.txt.
+- Extracción de archivos originales; conservación de frontend/base HTTP y workflow.
+- Implementación SQLite, aprobación extraída a approval.js, turnos, acciones y chat.
+- JSON válido de package.json con dependencia better-sqlite3 11.10.0.
+- IDs HTML únicos y referencias byId literales existentes.
+- Sin selector/campo de ritmo en HTML, frontend ni servidor activo.
+- Sin innerHTML en frontend; datos del chat renderizados con textContent.
+- Ejecución del esquema SQL extraído de db.js con Python sqlite3: tablas,
+  restricciones, relaciones, inserciones y borrado en cascada comprobados.
+  Esto NO comprueba el driver better-sqlite3 ni el servidor Node.
+- ZIP generado, leído de vuelta y comprobado (integridad CRC); sin secretos,
+  base de datos real, .env, node_modules ni package-lock.json fabricado.
 
-NO realizado:
-Node.js y npm no están disponibles. No se ejecutaron npm install, npm run check
-ni npm test. No se validó instalación del SDK ni comunicación real con OpenAI.
-No se hicieron pruebas reales de navegador, red, HTTPS, carga o GitHub Pages.
-Las pruebas se ENTREGAN, no se presentan como aprobadas.
-No se incluye package-lock.json inventado: generar con npm install y commitear.
+NO REALIZADO / PENDIENTE
+- Node.js/npm no están disponibles en el entorno (command -v sin resultado).
+- No se instalaron dependencias; better-sqlite3 requiere instalación local.
+- No se ejecutaron node --check, npm run check ni npm test.
+- Tests unitarios/integración se entregan, no se declaran aprobados.
+- No se ejecutaron llamadas OpenAI reales, navegador, HTTPS, Pages ni carga.
+- No se certifica ausencia de errores de ejecución: seguir README antes de desplegar.
 
-Las notas marcan implementación, no certificación de ejecución.
-Antes del despliegue: seguir README y ejecutar comprobaciones con Node >=22.
-La validación JSON es estructural; la semántica de líneas rojas depende del
-modelo y requiere revisión humana. No es una garantía de moderación perfecta.
+Las pruebas nuevas incluyen driver SQLite real, Socket.io real y proveedor IA mock
+sin facturación. Tests de reinicio, privacidad, idempotencia y autorización entregados.
+El mock está aislado bajo test/ y npm start no lo usa.
+Persistencia requiere conservar SQLITE_PATH en volumen durable y una sola instancia.
