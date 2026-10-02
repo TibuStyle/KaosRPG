@@ -1,7 +1,11 @@
+ARCHIVO HISTÓRICO NORMALIZADO EN v1.6
+Referencias al proveedor anterior anonimizadas; instrucciones de instalación históricas no vigentes.
+Para despliegue usar README.md, .env.example y Patch_Notes_v1.6.txt.
+
 CRÓNICAS — PATCH NOTES / GDD VIVO
 Versión 1.5 — Sistema de Tiradas Dinámicas y UI Matemática
 Estado: implementación fuente entregada; instalación y ejecución Node/navegador,
-workers/WASM reales, Pages y OpenAI real pendientes de aceptación.
+workers/WASM reales, Pages y proveedor IA anterior real pendientes de aceptación.
 
 1. VISIÓN Y CORE LOOP
 RPG web cooperativo con identidad/assets propios o licenciados. Siempre asíncrono
@@ -15,8 +19,8 @@ dados -> resultados guardados -> consecuencia final -> commit y avance.
 Se conservan servidor, DB, aprobación, frontend separado y tests de v1.4.
 Nuevos: mechanics.js, public/dice-ui.mjs, scripts/build-dice.cjs,
 test/mechanics.test.js y ampliación de integración real con IA mock.
-Node>=22: npm install; copiar .env.example a .env; configurar OPENAI_API_KEY y
-SQLITE_PATH; npm run check; npm test; npm start. OpenAI_MODEL debe soportar
+Node>=22: npm install; copiar .env.example a .env; configurar CLAVE_IA_LEGACY y
+SQLITE_PATH; npm run check; npm test; npm start. proveedor IA anterior_MODEL debe soportar
 Structured Outputs. Clave siempre backend. better-sqlite3 requiere módulo nativo.
 Dependencias nuevas fijadas: @3d-dice/dice-box 1.1.4 y esbuild 0.25.5.
 postinstall/build:frontend genera bundle local y copia assets/workers/WASM/licencias.
@@ -121,7 +125,7 @@ antitrampas. Memoria extensa, daño formal y balance completo tampoco se complet
 
 5. TO-DO
 BACKEND/OPERACIÓN
-[ ] Instalación real, lockfile, Node check/test, navegador/HTTPS/OpenAI real.
+[ ] Instalación real, lockfile, Node check/test, navegador/HTTPS/proveedor IA anterior real.
 [ ] Aceptación workers/WASM/WebGL/CSP/Pages en /repositorio/ y móviles.
 [ ] Identidad autenticada, recuperación token, antiabuso/facturación avanzados.
 [ ] Retención, backups/restore automatizados, cifrado, métricas/alertas/auditoría.
@@ -141,7 +145,7 @@ CALIDAD
 6. VERIFICACIÓN
 Pruebas Python de esquema SQL/migración, recuperación de espera/resolución,
 restricciones y cascadas; package JSON, referencias HTML y archivos ZIP/TXT.
-No se ejecutaron Node/npm/better-sqlite3/esbuild/DiceBox ni OpenAI real. Assets de
+No se ejecutaron Node/npm/better-sqlite3/esbuild/DiceBox ni proveedor IA anterior real. Assets de
 terceros se generan al instalar; su carga correcta debe confirmarse en aceptación.
 Tests entregados no equivalen a tests aprobados. Ver Verification.txt.
 

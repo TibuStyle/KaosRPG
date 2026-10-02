@@ -51,4 +51,14 @@ incompatibles con el mundo. No inventes puntuaciones ni reglas mecánicas.
 mensaje_narrativo: español, entre 1 y 1600 caracteres; nombre de cada rasgo: 1 a 60 caracteres.
 Nunca incluyas los rasgos en mensaje_narrativo: serán información privada del servidor.`;
 
-module.exports = { validateDecision, MASTER_PROMPT };
+const APPROVAL_SCHEMA = {
+  type:'object', additionalProperties:false,
+  properties:{
+    aprobado:{type:'boolean'}, mensaje_narrativo:{type:'string'},
+    perks:{type:'array',items:{type:'object',additionalProperties:false,
+      properties:{nombre:{type:'string'},tipo:{type:'string',enum:['ventaja']}},required:['nombre','tipo']}},
+    defectos:{type:'array',items:{type:'object',additionalProperties:false,
+      properties:{nombre:{type:'string'},tipo:{type:'string',enum:['desventaja']}},required:['nombre','tipo']}}
+  },required:['aprobado','mensaje_narrativo','perks','defectos']
+};
+module.exports = { validateDecision, MASTER_PROMPT, APPROVAL_SCHEMA };

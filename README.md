@@ -1,7 +1,7 @@
-# Crónicas 1.5 — Tiradas dinámicas y UI matemática
+# Crónicas 1.6 — Tiradas dinámicas y UI matemática
 
 RPG web cooperativo, siempre asíncrono y persistente. Express, Socket.io,
-SQLite y OpenAI backend. No hay selector de ritmo, salto ni timeout de turno.
+SQLite y Google Gemini backend. No hay selector de ritmo, salto ni timeout de turno.
 
 ## Probar localmente
 
@@ -9,7 +9,7 @@ Requiere Node.js >=22, npm y acceso al registro npm para instalar dependencias.
 
 ```sh
 npm install
-# copiar .env.example a .env y configurar OPENAI_API_KEY
+# copiar .env.example a .env y configurar GEMINI_API_KEY
 npm run check
 npm test
 npm start
@@ -35,10 +35,10 @@ Dependencias nuevas: @3d-dice/dice-box 1.1.4 y esbuild 0.25.5. better-sqlite3
 ## Decisiones mecánicas explícitas
 
 1. El servidor lee traits del autor en SQLite y envía mundo, últimos 20 mensajes,
-   acción, rol y rasgos ocultos a la evaluación OpenAI.
+   acción, rol y rasgos ocultos a la evaluación Google Gemini.
 2. Structured Outputs: response_format json_schema con strict=true y exactamente
    requiere_dado, narrativa_previa, dados_a_lanzar, cd_base, modificadores.
-   OPENAI_MODEL debe admitir Structured Outputs (default gpt-4o-mini).
+   GEMINI_MODEL=gemini-1.5-flash por defecto; confirmar disponibilidad del modelo.
 3. Trivial: false, dados=[], cd_base=0, modificadores=[]; resolución y avance atómico.
 4. Riesgo: se almacena pending_roll; no avanza. CD base 1..100. Notaciones NdS:
    N=1..12; S=4/6/8/10/12/20/100; máximo 8 grupos y 12 dados físicos.
@@ -172,6 +172,49 @@ CORS, Origin WebSocket, Helmet, validación servidor y render textContent conser
 8. Migrar copia de DB1.4, verificar FK/cascadas y backup/restore.
 9. Navegador real WebGL/worker/WASM, móvil/teclado, CSP, HTTPS y Pages /repositorio/.
 
-Entregables: ZIP completo fuente, Codigo_completo_v1.5.txt con TODOS los archivos
-textuales del proyecto (código, pruebas, config y docs históricos), Patch_Notes_v1.5.txt.
+Entregables: ZIP completo fuente, Codigo_completo_v1.6.txt con TODOS los archivos
+textuales del proyecto (código, pruebas, config y docs históricos), Patch_Notes_v1.6.txt.
 El TXT no se incluye a sí mismo recursivamente; incluye manifiesto SHA-256 por archivo.
+
+
+## Parche 1.6: Gemini y despliegue Render
+
+SDK backend solicitado: @google/generative-ai 0.24.1. Los tres contratos
+(aprobación, evaluación mecánica, resolución) usan responseMimeType application/json
+y responseSchema. additionalProperties no se envía: no pertenece al subconjunto
+OpenAPI del SDK. Los validadores locales siguen exigiendo claves exactas,
+rasgos autorizados y reglas de negocio. Prompts originales conservados íntegros.
+Presupuestos de salida conservados: 1800, 2600 y 2200 tokens respectivamente;
+la tokenización y el coste efectivo no son equivalentes entre proveedores.
+
+IMPORTANTE: gemini-1.5-flash y el SDK solicitado pertenecen a una generación
+legacy. Su disponibilidad no se ha confirmado aquí. Si Google devuelve modelo
+no encontrado/retirado, el despliegue del servidor no hace disponible ese modelo:
+configura GEMINI_MODEL con un modelo habilitado que admita systemInstruction,
+responseSchema y application/json. No existe sustitución silenciosa ni promesa de
+ahorro medido. La API fallida mantiene el estado recuperable y no avanza turnos.
+
+Render (backend): Node >=22, build `npm install`, start `npm start`.
+Configurar GEMINI_API_KEY como secreto, GEMINI_MODEL, NODE_ENV=production,
+FRONTEND_ORIGINS=https://tu-frontend y TRUST_PROXY_HOPS según proxy real.
+Configurar SQLITE_PATH en disco persistente, por ejemplo /var/data/cronicas.sqlite.
+Una instancia por DB; no desplegar réplicas ni guardar SQLite en filesystem efímero.
+Health check /health informa versión 1.6.0. No usar --ignore-scripts sin ejecutar
+npm run build:frontend explícitamente. esbuild es dependencia de producción.
+Tras primera instalación real generar y versionar package-lock.json para npm ci.
+No se incluye un lockfile inventado ni binarios descargados de terceros.
+
+El build localiza la raíz real del paquete a partir de require.resolve y comprueba
+name/version. Copia dist/assets completo a public/vendor/dice-assets; conserva
+dist completo en dice-box-dist y sus auxiliares de raíz en dice-assets. No exige
+un fichero cuyo nombre incluya worker dentro de assets: acepta código Worker
+embebido en JS de dist o auxiliares externos. Valida WASM no vacío y genera
+manifest.json con evidencias. Es una detección estática, no certificación del
+contenido npm 1.1.4 ni de WebGL. Los fixtures de test/build-dice.test.js son
+sintéticos; la estructura exacta del paquete publicado debe verificarse al instalar.
+
+Antes de abrir a usuarios ejecutar npm run check y npm test; revisar en navegador
+Network sin 404 para JS, tema, modelos y WASM, tanto Render como Pages con subruta.
+Hacer una aprobación real y una acción trivial/arriesgada con Gemini; confirmar
+recuperación tras error, rechazo JSON incorrecto y conservación de rasgos SQLite.
+Cancelar un trabajo descarta su resultado; no garantiza cancelar la facturación.

@@ -8,7 +8,8 @@ const cors = require('cors');
 const helmet = require('helmet');
 const { rateLimit } = require('express-rate-limit');
 const { Server } = require('socket.io');
-const OpenAI = require('openai');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { generateJSON } = require('./gemini');
 
 const PORT = Number(process.env.PORT || 3000);
 if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) throw new Error('PORT inválido');
@@ -38,7 +39,7 @@ app.use(helmet({
 const allowed = origin => !origin || origins.has(origin);
 app.use(cors({ origin(origin, callback) { callback(null, allowed(origin)); } }));
 app.use(rateLimit({ windowMs: 60000, limit: 180, standardHeaders: 'draft-7', legacyHeaders: false }));
-app.get('/health', (_req, res) => res.json({ ok: true, version: '1.5.0' }));
+app.get('/health', (_req, res) => res.json({ ok: true, version: '1.6.0' }));
 app.use(express.static(path.join(__dirname, 'public')));
 const server = http.createServer(app);
 const handshakes = new Map();
@@ -58,7 +59,7 @@ const io = new Server(server, {
 });
 
 const { openDatabase, recover } = require('./db');
-const { validateDecision, MASTER_PROMPT } = require('./approval');
+const { validateDecision, MASTER_PROMPT, APPROVAL_SCHEMA } = require('./approval');
 const { validateEvaluation,validateRoll,adjustedDC,publicEvaluation,redact,narrative,
   EVALUATION_SCHEMA,RESOLUTION_SCHEMA,EVALUATION_PROMPT,RESOLUTION_PROMPT } = require('./mechanics');
 const db = openDatabase();
@@ -67,9 +68,9 @@ const one = (sql, ...params) => db.prepare(sql).get(...params);
 const all = (sql, ...params) => db.prepare(sql).all(...params);
 const run = (sql, ...params) => db.prepare(sql).run(...params);
 const hash = token => crypto.createHash('sha256').update(token).digest('hex');
-const apiKey = process.env.OPENAI_API_KEY?.trim();
-const ai = apiKey ? new OpenAI({ apiKey, timeout: 45000, maxRetries: 0 }) : null;
-const AI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+const apiKey = process.env.GEMINI_API_KEY?.trim();
+const ai = apiKey ? new GoogleGenerativeAI(apiKey) : null;
+const AI_MODEL = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
 // Solo conexiones/trabajos y límites de transporte son efímeros; nunca estado de partida.
 const jobs = new Map();
 let stopping = false;
@@ -161,7 +162,7 @@ function closeRoom(room) {
   for(const id of connected) { const s=io.sockets.sockets.get(id); if(s) { s.leave(room.code); delete s.data.tokenHash; } }
 }
 function budget(member,room) {
-  if(!ai) fail('IA no configurada. Añade OPENAI_API_KEY al backend.');
+  if(!ai) fail('IA no configurada. Añade GEMINI_API_KEY al backend.');
   if(stopping) fail('Servidor reiniciándose.');
   if(jobs.size>=4) fail('El DM está ocupado. Reintenta en unos segundos.');
   const now=Date.now();
@@ -174,12 +175,8 @@ function budget(member,room) {
     run('INSERT OR REPLACE INTO rate_limits VALUES(?,?,?)',key,e && now-e.start<60000 ? e.start:now,e && now-e.start<60000 ? e.count+1:1);
   }
 }
-async function jsonCompletion(prompt,data,controller,maxTokens=1800,schema=null) {
-  const response=await ai.chat.completions.create({model:AI_MODEL,response_format:schema ? {type:'json_schema',json_schema:{name:'cronicas_response',strict:true,schema}} : {type:'json_object'},temperature:0.2,max_tokens:maxTokens,
-    messages:[{role:'system',content:prompt},{role:'user',content:JSON.stringify(data)}]}, {signal:controller.signal});
-  const choice=response.choices?.[0];
-  if(!choice||choice.finish_reason!=='stop'||choice.message?.refusal||typeof choice.message?.content!=='string'||choice.message.content.length>16000) fail('Salida IA inválida.');
-  return JSON.parse(choice.message.content);
+async function jsonCompletion(prompt,data,controller,maxTokens=1800,schema=APPROVAL_SCHEMA) {
+  return generateJSON(ai,AI_MODEL,prompt,data,controller,maxTokens,schema);
 }
 async function evaluateCharacter(room,member,draft) {
   const key='character:'+member.id;

@@ -1,3 +1,7 @@
+ARCHIVO HISTÓRICO NORMALIZADO EN v1.6
+Referencias al proveedor anterior anonimizadas; instrucciones de instalación históricas no vigentes.
+Para despliegue usar README.md, .env.example y Patch_Notes_v1.6.txt.
+
 CRÓNICAS — PATCH NOTES / GDD VIVO
 Versión: 1.4
 Parche: Persistencia SQLite y motor asíncrono estricto
@@ -17,7 +21,7 @@ El host escribe el planteamiento inicial en su turno; no hay apertura IA automá
 Raíz: server.js, db.js, approval.js, package.json, .gitignore, .env.example,
 README.md, Verification.txt, Patch_Notes.txt, Patch_Notes_v1.4.txt y workflow Pages.
 Frontend: public/index.html, public/style.css, public/main.js. Pruebas bajo test/.
-Node.js >=22. npm install; copiar .env.example a .env; configurar OPENAI_API_KEY
+Node.js >=22. npm install; copiar .env.example a .env; configurar CLAVE_IA_LEGACY
 solo backend y SQLITE_PATH; npm run check; npm test; npm start.
 Dependencia añadida: better-sqlite3 11.10.0 (nativa); requiere binario compatible o
 herramientas de compilación. SQLite crea archivo/esquema al iniciar servidor.
@@ -41,7 +45,7 @@ PERSONAJES Y PRIVACIDAD
 - Perks/defectos se guardan en traits, con FK al personaje; no en member.gm de RAM.
 - Público: nombre, conexión y estado; sin historia, aprobación privada ni rasgos.
 - Propietario recupera historia y aprobación por token; nunca rasgos secretos.
-- Aprobación envía mundo e historia a OpenAI; narrativa envía mundo y chat público.
+- Aprobación envía mundo e historia a proveedor IA anterior; narrativa envía mundo y chat público.
   No se envían tokens/hashes ni rasgos a la narración. No incluir datos sensibles.
 - Validación JSON es estructural; IA no garantiza detección de prohibiciones.
 
@@ -102,7 +106,7 @@ VISTA DE PARTIDA Y CHAT
 [HECHO] Servidor valida autor, fase y versión; no confía en bloqueo del cliente.
 [HECHO] Narración IA validada, commit atómico y avance circular.
 [HECHO] Idempotencia de acciones y reintento explícito de narrativa fallida.
-[HECHO] API OpenAI backend, secreto en entorno, modelo configurable y timeout.
+[HECHO] API proveedor IA anterior backend, secreto en entorno, modelo configurable y timeout.
 [HECHO] Aprobación/rechazo y narrativa privada; proyecciones sin secretos.
 [HECHO] Cuotas persistentes compartidas para aprobación/narración y concurrencia IA.
 [HECHO] Inicio autorizado solo host con jugadores conectados/aprobados.
@@ -141,7 +145,7 @@ CALIDAD
 6. VERIFICACIÓN Y ALCANCE
 Comprobados con Python: JSON package, IDs HTML/referencias DOM, ausencia del
 selector/propiedad de ritmo en código activo; esquema SQL ejecutable, FK y cascadas.
-No se ejecutaron npm install, check/test Node, better-sqlite3 ni llamadas OpenAI.
+No se ejecutaron npm install, check/test Node, better-sqlite3 ni llamadas proveedor IA anterior.
 Tests Node se entregan, no se afirman aprobados. Sin pruebas reales de navegador,
 HTTPS, carga o Pages. Consultar Verification.txt para alcance exacto.
 No incluye DB con sesiones reales, claves, node_modules ni lockfile inventado.

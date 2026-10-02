@@ -1,29 +1,30 @@
-CRÓNICAS1.5 — VERIFICACIÓN DE ENTREGA
+CRÓNICAS 1.6 — VERIFICACIÓN DE ENTREGA
 
-REALIZADO
-- Lectura del proyecto ZIP1.4 y notas adjuntas; modificación de código existente.
-- Revisión estática servidor/frontend/contratos/reintento y privacidad literal.
-- package.json válido; referencias byId e IDs HTML únicas/existentes.
-- Esquema inicial y migración v2 ejecutados con Python sqlite3, conservación de
-  datos, espera tras recuperación, resolución failed conservando tirada y cascadas.
-  Esto NO verifica el driver better-sqlite3 ni ejecución de servidor Node.
-- ZIP integral comprobado con CRC y TXT comparado con todos los archivos del árbol.
-- No .env real, DB real, token, clave, node_modules ni lockfile inventado.
+EJECUTADO EN PYTHON
+- Reconstrucción de los 23 archivos del consolidado adjunto, sin omisiones.
+- package.json válido, dependencia Gemini fijada y proveedor previo retirado.
+- Comparación textual exacta: db.js, mechanics.js, public/dice-ui.mjs,
+  public/main.js, public/style.css, workflow Pages y tests motor/mecánica intactos.
+- Los tres prompts originales idénticos. Presupuestos 1800/2600/2200 intactos.
+- Búsqueda sin referencias al proveedor previo en árbol actualizado.
+- Manifiesto SHA-256 y contenido TXT contrastados contra todos los archivos.
+- ZIP comprobado mediante testzip y comparación exacta de cada entrada.
 
-NO REALIZADO
-- command -v node/npm sin resultado: no se puede ejecutar npm install/check/test.
-- No hay red para descargar distribución DiceBox: public/vendor lo genera npm
-  install (postinstall) o npm run build:frontend. No se entrega build precompilado.
-- No se ejecutan esbuild, workers, WASM, WebGL o navegador; no certificar carga
-  correcta o API de la librería hasta instalación y aceptación manual.
-- No hay prueba OpenAI real, HTTPS/CSP/Pages, carga, móviles o backup/restore.
-- Tests Node unitarios y Socket+SQLite reales con IA mock ENTREGADOS, NO APROBADOS.
+NO EJECUTADO / SIN CERTIFICAR
+- No existen Node/npm ni acceso de red. No npm install/check/test, esbuild,
+  better-sqlite3, Socket.io ni navegador ejecutados aquí.
+- No disponible el paquete npm original: estructura REAL publicada 1.1.4 no
+  contrastada. Tests build con fixtures sintéticas, no evidencia de distribución.
+- Corrección fuente: elimina falso requisito de nombre worker en assets;
+  preserva dist/assets y dist, valida WASM y evidencias Worker estáticas.
+  Verificar rutas reales y Network sin 404 tras instalar antes de producción.
+- Gemini real, disponibilidad gemini-1.5-flash/SDK legacy y costes no comprobados.
+  Si modelo retirado/no disponible, elegir GEMINI_MODEL habilitado explícitamente.
+- Tests unitarios, regresión e integración entregados NO aprobados; ejecutar Node22.
+- Sin lockfile fabricado, node_modules ni assets binarios inventados:
+  public/vendor se construye en instalación. ZIP fuente no imagen precompilada.
+- Render/Pages/HTTPS/CSP/WebGL/móviles/backup y anti-trampas no certificados.
 
-Tests nuevos: validación de CD/dados/rasgos, privacidad de etiquetas, rango/suma,
-recuperación de awaiting_roll/resolution; integración exige persistencia de espera
-tras reinicio, rechaza autor ajeno/números inválidos, deduplica resultado igual,
-rechaza diferentes, simula fallo final y comprueba reintento con mismo resultado.
-
-Resultados cliente son manipulables. Controles de rango/suma no verifican azar.
-Redacción literal/prompt no garantizan confidencialidad semántica de rasgos.
-No autoavance por desconexión, error o reinicio; una instancia por DB durable.
+Sin secretos ni DB reales. Historial de notas normalizado para anonimizar
+proveedor previo; los prompts fuente no se modificaron. Cancelación lógica no
+promete cancelar facturación. Validación de dados cliente no certifica azar.

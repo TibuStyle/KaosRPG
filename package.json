@@ -1,8 +1,8 @@
 {
   "name": "cronicas-rpg",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "private": true,
-  "description": "RPG as\u00edncrono persistente con SQLite y turnos estrictos",
+  "description": "RPG asíncrono persistente con SQLite y turnos estrictos",
   "main": "server.js",
   "engines": {
     "node": ">=22"
@@ -10,7 +10,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "check": "node --check server.js && node --check db.js && node --check approval.js && node --check public/main.js && node --check mechanics.js && node --check scripts/build-dice.cjs && node --check public/dice-ui.mjs",
+    "check": "node --check server.js && node --check db.js && node --check approval.js && node --check public/main.js && node --check mechanics.js && node --check scripts/build-dice.cjs && node --check public/dice-ui.mjs && node --check gemini.js && node --check test/mock-server.cjs",
     "test": "node --test test/*.test.js",
     "build:frontend": "node scripts/build-dice.cjs",
     "postinstall": "npm run build:frontend"
@@ -22,10 +22,10 @@
     "express-rate-limit": "7.5.0",
     "helmet": "8.1.0",
     "socket.io": "4.8.1",
-    "openai": "4.77.0",
     "better-sqlite3": "11.10.0",
     "@3d-dice/dice-box": "1.1.4",
-    "esbuild": "0.25.5"
+    "esbuild": "0.25.5",
+    "@google/generative-ai": "0.24.1"
   },
   "devDependencies": {
     "socket.io-client": "4.8.1"
