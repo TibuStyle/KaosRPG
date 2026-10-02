@@ -1,96 +1,96 @@
-# Crónicas · v1.2
+# Crónicas 1.3 — Game Master Engine
 
-Node.js 22+, Express, Socket.io. Frontend estático en `public/`.
+MVP de preparación multijugador. La IA evalúa personajes; no se ejecutan aventuras todavía.
 
-## Local
+## Instalación
+1. Node.js >=22. Ejecuta `npm install` y conserva el `package-lock.json` generado.
+2. Copia `.env.example` a `.env`. Configura `OPENAI_API_KEY` solo en el backend.
+3. `npm run check`, `npm test`, `npm start`.
+4. Abre `http://localhost:3000` en dos navegadores independientes: anfitrión y jugador.
 
-```sh
-npm install
-cp .env.example .env
-npm run check
-npm start
-```
+Modelo predeterminado: `gpt-4o-mini` (familia GPT-4, modo JSON). `OPENAI_MODEL`
+permite elegir `gpt-4-turbo` o `gpt-3.5-turbo` si tu cuenta y ese modelo siguen
+admitiendo Chat Completions y `response_format: json_object`. No todos los modelos
+son compatibles. Si cambias el modelo, verifica compatibilidad y límites.
+La disponibilidad de modelos depende de OpenAI. SDK fijado: openai 4.77.0.
+La API tiene facturación independiente. Sin clave, funcionan las salas pero
+la evaluación informa que el administrador debe configurar la IA.
 
-Abre http://localhost:3000 en dos navegadores o en una ventana privada: crea
-una sala como host y únete como jugador. Dos pestañas nuevas también sirven;
-si una pestaña duplica la sesión, usa ventana privada para una identidad distinta.
-No abras el HTML mediante file://.
-
-`npm install` genera package-lock.json: añadirlo al repositorio tras instalar y
-revisar dependencias. Después, usar `npm ci` para despliegues reproducibles.
-No se incluye un lock inventado sin resolución real de dependencias.
-
-## Despliegue separado
-
-1. Desplegar raíz en un servicio con Node.js 22+, WebSockets y HTTPS.
-   Instalación: npm install (npm ci tras incorporar el lock). Inicio: npm start.
-2. Variables: NODE_ENV=production, PORT según proveedor y
-   FRONTEND_ORIGINS=https://TU_USUARIO.github.io,https://TU_BACKEND.example.com
-   Orígenes exactos: sin ruta, sin barra final, sin comodín. Para Pages con
-   dominio propio, añadir su origen real. Nunca poner /nombre-repositorio.
-3. Configurar TRUST_PROXY_HOPS solo según la cadena real de proxies.
-   El límite de handshakes usa IP de conexión directa: tras un proxy es
-   compartido. Afinar ese límite en infraestructura antes de tráfico público.
-4. GitHub Pages no ejecuta server.js ni permite seleccionar cualquier subcarpeta
-   como fuente de rama. El workflow incluido publica public/ como artefacto.
-   En Settings > Pages > Source seleccionar GitHub Actions; rama main.
-5. Abrir Pages > Opciones / Servidor y guardar URL HTTPS del backend.
-   Se conserva en sessionStorage por pestaña. Para fijar URL para todo el
-   despliegue, sustituir fallback en public/main.js por el origen del backend.
-
-No hay secretos en el frontend. No incluir .env en Git. El script cliente de
-Socket.io usa CDN oficial fijado en 4.8.1: se necesita acceso a ese CDN. Para
-alojamiento sin CDN, copiar el cliente distribuido por la dependencia a public/
-y cambiar la referencia script; no inventar hashes SRI.
+## Privacidad y aprobación
+- El servidor envía a OpenAI el nombre/historia y la configuración del mundo,
+  incluidas premisa y líneas rojas. No envía tokens de sesión ni claves en el prompt.
+- JSON mode garantiza formato JSON cuando la respuesta termina correctamente,
+  no el esquema ni la decisión correcta. El servidor valida claves exactas,
+  booleano, longitudes, tipos, duplicados, listas y restricciones de rechazo.
+- El prompt trata las entradas como datos y exige respetar las prohibiciones.
+  **Una IA no ofrece garantía absoluta contra prompt injection ni detección perfecta
+  de líneas rojas.** Se requiere revisión humana y política de moderación antes de
+  producción; no confundir validación estructural con comprobación semántica.
+- Solo el servidor conserva perks/defectos en `member.gm`. Snapshot y recuperación
+  privada usan proyecciones explícitas; nunca exponen esos arrays.
+- El grupo conoce nombre y estado, no historia ni mensaje narrativo. El propietario
+  recibe historia, estado y mensaje, incluidos tras reconexión.
+- Estados: draft, evaluating, rejected, approved. Los fallos técnicos no aprueban
+  ni rechazan. Si el texto cambió se conserva como borrador; para el mismo texto
+  se recupera el estado previo.
 
 ## Contrato Socket.io
+Todos los eventos de solicitud requieren ACK: `{ok:true,data}` o `{ok:false,error}`.
+- `room:create {playerName,world}`, `room:join {playerName,code}`.
+- `session:resume {token}` devuelve sesión y personaje propio, sin rasgos.
+- `character:submit {name,history}` espera hasta 45 segundos al proveedor; ACK
+  cliente hasta 60 segundos. Devuelve `{character:{name,history,status,narrative}}`.
+  Estado público por `room:state`: incluye characterStatus, phase y canStart.
+- `adventure:start {}` solo host; exige fase lobby, al menos un jugador y todos
+  conectados y aprobados. Cambia phase a starting y publica el estado a todos.
+  El frontend muestra “La partida está comenzando...” también tras reconectar.
+- `room:leave {}` elimina al jugador; el host cierra la sala.
+- `room:closed {reason}` y `session:replaced` mantienen su contrato anterior.
 
-Todas las peticiones incluyen payload y callback de confirmación:
-`{ ok: true, data: ... }` o `{ ok: false, error: ... }`.
+Al comenzar no se admiten nuevas uniones ni modificaciones de personaje.
+Los jugadores desconectados bloquean el inicio hasta volver o expirar su reserva.
+El host no necesita personaje. El último estado del servidor gobierna el botón;
+no se confía en habilitación del cliente.
 
-- room:create: { playerName, world: { storyName, premise, redLines,
-  magicLevel, adventureTone, turnPace, mortality } }.
-- room:join: { playerName, code }.
-- session:resume: { token }.
-- character:submit: { name, history }.
-- room:leave: {}. Host cierra para todos; jugador elimina su personaje.
-- room:state (servidor): mundo y lista de miembros sin tokens ni historias.
-- room:closed (servidor): { reason }.
-- session:replaced (servidor): otra conexión recuperó el mismo token.
+## Límites y operaciones
+Se conservan 8 jugadores más host, 1000 salas, TTL 24 horas, reserva 15 minutos,
+limpieza cada 30 segundos, límites HTTP/eventos y mensajes de 32768 bytes.
+IA: 4 solicitudes simultáneas por proceso, 1 por jugador, 3/min por jugador y
+10/min por sala; sin cola ni reintentos automáticos del SDK. Son límites de
+mitigación, no una protección completa de facturación: crea presupuestos/alertas
+con el proveedor. Cancelar una solicitud puede no evitar el coste ya generado.
+Se cancela al abandonar/cerrar y se descartan resultados de salas caducadas.
+La desconexión temporal no cancela la evaluación: el resultado se recupera.
+No uses varias instancias sin base de datos/estado compartido y adaptador.
+Todo permanece en RAM y se pierde al reiniciar. El token es un secreto de acceso,
+no una cuenta autenticada. CORS no equivale a autenticación.
 
-Crear/unirse/recuperar devuelve token secreto, memberId, isHost y room.
-Recuperar devuelve también el personaje propio, si existe. Token aleatorio de
-256 bits: tratarlo como credencial de portador, no compartirlo ni registrarlo.
-El código es invitación, no autenticación. CORS no sustituye autenticación.
+## Despliegue
+GitHub Pages publica solo `public/` mediante el workflow incluido.
+En Settings > Pages selecciona GitHub Actions. Backend Node separado con HTTPS,
+`NODE_ENV=production` y `FRONTEND_ORIGINS=https://tuusuario.github.io` (origen,
+no ruta del repositorio). Configura secretos en el proveedor del backend.
+Desde Opciones / Servidor usa la URL base HTTPS del backend.
+Configura `TRUST_PROXY_HOPS` solo según el proxy real. El límite de handshakes
+usa IP del socket: detrás de un proxy puede agrupar usuarios; ajustar la estrategia
+con IP fiable antes de producción, sin confiar ciegamente en X-Forwarded-For.
+CSP y allowlist se conservan; Socket.io se sirve desde CDN en esta versión.
 
-## Límites explícitos
+## Pruebas y aceptación
+`npm test` incluye pruebas de servidor con mocks, sin llamadas facturables.
+No sustituye integración con dependencias reales ni navegadores.
 
-- Una instancia/proceso. No usar cluster, múltiples réplicas o balanceo entre
-  procesos sin almacenamiento compartido y adaptador Socket.io.
-- Estado solo en RAM: reinicios eliminan salas, sesiones y personajes.
-- Sala: 24 horas; desconexión: reserva 15 minutos, limpieza cada 30 segundos.
-- Hasta 1000 salas; ocho jugadores más host por sala.
-- Host desconectado: reserva temporal; si expira, se cierra toda la sala.
-- Reglas y líneas rojas se validan por tipo/longitud/enumeración, NO por sentido.
-  Seleccionar Asíncrono no implementa todavía un foro persistente.
-- IA, Perks/Defectos, aprobación, inicio de aventura, tiradas y mapas pendientes.
-- Personajes modificables por propietario; no se comparte su historia.
-- No hay cuentas, contraseñas ni autorización externa. Recomendado como MVP
-  privado de evaluación; antes de público, añadir autenticación, base de datos,
-  moderación, monitorización, copias y protección antiabuso perimetral.
-- Helmet, allowlist de Origin (también WebSocket), tamaño máximo de mensajes,
-  límites de eventos/HTTP y validación de servidor son una base, no garantía.
-- Un timeout no prueba que la operación falló: si crear/unirse perdió su ACK,
-  recarga para liberar esa conexión o espera su reserva antes de reintentar.
+Recorrido manual necesario:
+1. Crear mundo sin magia con líneas rojas claras; unirse como jugador.
+2. Enviar historia incompatible: rechazo, mensaje privado y posibilidad de editar.
+3. Corregir historia: aprobación, host ve Aprobado, botón habilitado.
+4. Añadir segundo jugador: botón deshabilitado hasta aprobarlo.
+5. Intentar adventure:start como jugador: error de autorización.
+6. Iniciar como host: todos ven la vista temporal; recargar recupera esa fase.
+7. Inspeccionar ACKs/room:state: ningún perks/defectos ni historia ajena.
+8. Desconectar/reconectar durante IA: resultado propio recuperable.
+9. Probar clave ausente/incorrecta, timeout, JSON inválido, exceso de solicitudes,
+   cierre de sala durante evaluación y límites de capacidad.
+10. Verificar móvil, teclado, HTTPS y CORS desde Pages.
 
-## Pruebas manuales antes de desplegar
-
-1. Crear con todos los campos; comprobar transición y código A-Z de seis letras.
-2. Unirse desde otra identidad; ver lista del host sin recargar.
-3. Enviar/editar personaje y comprobar nombre/estado en ambas ventanas.
-4. Código inexistente, sala llena, campos espacios y payloads malformados.
-5. Cortar red/reconectar y recargar; verificar recuperación con token propio.
-6. Cerrar sala y salir como jugador; comprobar expulsión/limpieza de lista.
-7. Reiniciar backend: confirmar pérdida de estado y manejo de sesión caducada.
-8. Pages HTTPS + backend HTTPS: probar CORS, WebSocket y fallback polling.
-9. Teclado, Escape, foco, móvil y movimiento reducido.
+Ver Verification.txt para las comprobaciones efectivamente realizadas en la entrega.

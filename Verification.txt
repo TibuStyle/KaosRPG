@@ -1,16 +1,23 @@
-VERIFICACIÓN v1.2
-EJECUTADO: análisis estático automatizado con Python.
-- package.json es JSON válido.
-- IDs HTML únicos.
-- Referencias for/ARIA apuntan a IDs existentes.
-- Referencias literales byId del cliente existen en HTML.
-- CSS y JS locales referenciados existen.
-- Campos de cuatro reglas coinciden con claves del servidor.
-- Eventos de peticiones del cliente coinciden con handlers del servidor.
-- Cliente no utiliza innerHTML.
-NO EJECUTADO:
-- node --check: Node.js no está instalado (command not found).
-- npm install, auditoría de dependencias y generación del lock.
-- Pruebas Socket.io/Express reales, navegador, CORS, TLS y despliegue Pages.
-No se garantiza funcionamiento probado por estas verificaciones estáticas.
-Ejecutar npm install, npm run check y pruebas del README en Node.js 22+.
+CRÓNICAS 1.3 — VERIFICACIÓN DE ENTREGA
+
+Realizado en este entorno:
+- Lectura de ambos originales y separación de las siete secciones entregadas.
+- JSON de package.json válido; dependencia openai 4.77.0 y versión 1.3.0.
+- Comprobación automática de IDs HTML únicos y referencias byId literales.
+- Revisión estática: handler espera promesas, JSON mode activado, proyecciones
+  públicas/privadas no incluyen member.gm, sin innerHTML en frontend.
+- README, .env.example, workflow Pages, pruebas con mocks y notas 1.3 incluidos.
+- Archivo ZIP construido con todo el código y documentación, sin .env real,
+  node_modules ni claves; contenido completo también disponible en TXT.
+
+NO realizado:
+Node.js y npm no están disponibles. No se ejecutaron npm install, npm run check
+ni npm test. No se validó instalación del SDK ni comunicación real con OpenAI.
+No se hicieron pruebas reales de navegador, red, HTTPS, carga o GitHub Pages.
+Las pruebas se ENTREGAN, no se presentan como aprobadas.
+No se incluye package-lock.json inventado: generar con npm install y commitear.
+
+Las notas marcan implementación, no certificación de ejecución.
+Antes del despliegue: seguir README y ejecutar comprobaciones con Node >=22.
+La validación JSON es estructural; la semántica de líneas rojas depende del
+modelo y requiere revisión humana. No es una garantía de moderación perfecta.

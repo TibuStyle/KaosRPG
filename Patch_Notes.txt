@@ -1,13 +1,14 @@
 CRÓNICAS — PATCH NOTES / GDD VIVO
-Versión: 1.2
-Parche: Estructura GitHub, backend base, salas y personajes
-Estado: MVP multijugador de preparación; todavía no ejecuta aventuras.
+Versión: 1.3
+Parche: Game Master Engine — evaluación IA y comienzo de aventura
+Estado: preparación multijugador con aprobación IA y vista temporal de inicio.
 
 1. VISIÓN Y ESTADO
 RPG web cooperativo con identidad/assets propios o licenciados, inspirado en
-Dungeons & Dragons y Baldur's Gate 3. Director de Juego IA, resolución de
-acciones y soporte asíncrono persistente continúan como objetivos futuros.
+Dungeons & Dragons y Baldur's Gate 3. DM de aprobación implementado. Narrativa jugable, resolución de acciones y
+soporte asíncrono persistente continúan como objetivos futuros.
 
+v1.3 añade evaluación de personajes mediante OpenAI desde el servidor.
 v1.1 era una interfaz local sin backend. v1.2 crea salas reales en Socket.io,
 valida configuración en servidor y permite enviar personajes en texto libre.
 No confundir almacenamiento temporal en RAM con persistencia durable.
@@ -16,7 +17,8 @@ No confundir almacenamiento temporal en RAM con persistencia durable.
 Raíz: server.js, package.json, .gitignore, .env.example, README.md,
 Patch_Notes.txt y .github/workflows/pages.yml.
 Frontend: public/index.html, public/style.css, public/main.js.
-Node.js >=22; npm install; copiar .env.example a .env; npm run check; npm start.
+Node.js >=22; npm install; copiar .env.example a .env y configurar OPENAI_API_KEY;
+npm run check; npm test; npm start.
 Abrir http://localhost:3000 en navegadores/identidades diferentes.
 GitHub Pages sirve public/ mediante el workflow; el backend se despliega aparte.
 Configurar FRONTEND_ORIGINS con los orígenes exactos permitidos y URL HTTPS del
@@ -35,16 +37,21 @@ CREACIÓN DE PARTIDA
 - Servidor genera código A-Z de seis letras mediante crypto.randomInt y
   comprueba unicidad en el estado activo. Unión comprueba existencia/capacidad.
 - Host accede a Sala de Espera con código grande y lista dinámica de miembros.
-- Configuración visible al grupo; aplicación semántica de reglas pendiente.
+- Configuración visible al grupo; premisa, magia, tono y prohibiciones se envían
+  al DM para evaluar personajes. Detección semántica no garantizada por una IA.
 
 PERSONAJES
 - Jugador válido accede a Creación de Personaje tras confirmación del servidor.
 - Nombre requerido hasta 60; historia libre requerida hasta 6000 caracteres.
 - Enviar Personaje guarda en RAM; puede editar y reenviar mientras siga unido.
-- Grupo ve nombre y estado «enviado», no historia ni tokens secretos.
+- Grupo ve nombre y estado borrador/evaluando/rechazado/aprobado; no historia,
+  mensaje privado, rasgos ni tokens secretos.
 - La sesión propia recupera su personaje después de reconectar/recargar.
-- Sin aprobación IA, Perks, Defectos, JSON secreto ni validación semántica aún.
-- Futuro: IA aprueba/rechaza según líneas rojas; servidor valida JSON y equilibrio.
+- OpenAI evalúa y devuelve JSON validado por el servidor: aprobado,
+  mensaje_narrativo, perks y defectos. Claves adicionales o tipos inválidos fallan.
+- Rechazo permite editar. Aprobación conserva rasgos solo en member.gm.
+- El esquema limita los rasgos; equilibrio mecánico formal continúa pendiente.
+- Historia y mundo se envían al proveedor: no introducir datos sensibles.
 
 SESIONES Y CICLO DE VIDA
 - Ocho jugadores más host; máximo 1000 salas por proceso.
@@ -70,6 +77,16 @@ MAPAS, IMÁGENES Y ASSETS — PENDIENTES
   uso irrestricto. scene.changed: caché, costes, fondo/fallback vía backend.
 
 4. HITOS COMPLETADOS
+[HECHO] API OpenAI real desde backend, clave solo en entorno, modelo configurable.
+[HECHO] Prompt maestro con mundo, magia, tono, líneas rojas e historia.
+[HECHO] Modo JSON y validación exacta de formato, tipos y límites.
+[HECHO] Aprobación/rechazo y narrativa privada por ACK de Socket.io.
+[HECHO] Perks y defectos ocultos, sin exposición en snapshot ni recuperación.
+[HECHO] Estado Aprobado visible al host y a la sala en tiempo real.
+[HECHO] Empezar Aventura solo host, con jugadores conectados y aprobados.
+[HECHO] Vista temporal de inicio sincronizada y recuperable.
+[HECHO] Timeouts, límite de concurrencia/cuotas, descarte de resultados obsoletos.
+[HECHO] Pruebas automatizadas con mocks incluidas; ejecución pendiente.
 [HECHO] Inicio, Lobby, formularios exclusivos, Opciones y navegación.
 [HECHO] Responsive, labels, foco visible, estados y movimiento reducido.
 [HECHO] Configuración de host completa y Random fijo explícitamente sin IA.
@@ -81,7 +98,7 @@ MAPAS, IMÁGENES Y ASSETS — PENDIENTES
 [HECHO] Generación y comprobación de códigos únicos A-Z de seis letras.
 [HECHO] Creación/unión reales con confirmaciones y mensajes de error.
 [HECHO] Sala de Espera del host y lista en tiempo real con conexión/estado.
-[HECHO] Nombre/historia de personaje, envío real y actualización por propietario.
+[HECHO] Nombre/historia de personaje, evaluación real y actualización por propietario.
 [HECHO] Historias/tokens excluidos del estado público de sala.
 [HECHO] Recuperación mediante token y reserva temporal de desconexiones.
 [HECHO] Salida, cierre por host, caducidad y limpieza periódica de memoria.
@@ -103,11 +120,14 @@ BACKEND Y OPERACIÓN
 
 IA Y PERSONAJES
 [ ] Random por IA real exclusivamente desde backend.
-[ ] Esquema de Perks/Defectos, aprobación, equilibrio y secretos solo servidor.
-[ ] Validación de salidas, rechazos, costes, errores y límites de IA.
+[HECHO] Esquema narrativo de Perks/Defectos, aprobación y secretos solo servidor.
+[ ] Equilibrio mecánico formal, moderación y revisión humana de decisiones.
+[HECHO] Validación estructural de salidas, rechazos, errores y límites básicos.
+[ ] Presupuestos de costes, métricas y antiabuso con identidad autenticada.
 
 NARRATIVA, MECÁNICAS Y VISUALES
-[ ] Registro compartido, empezar aventura y control de turnos.
+[HECHO] Empezar aventura con transición temporal para todos.
+[ ] Registro compartido, narrativa jugable y control de turnos.
 [ ] Modo asíncrono persistente y reglas de magia/mortalidad.
 [ ] CD, ajustes visibles, resultado autorizado, dados 3D/assets/workers.
 [ ] Mapas por seed y catálogo de recursos licenciados.
@@ -118,22 +138,33 @@ CALIDAD
 [ ] Pruebas CORS/WebSocket reales desde GitHub Pages y backend público.
 [ ] Autorización futura, moderación y análisis de amenazas completo.
 
-6. PARCHE ACTUAL — v1.2
-Cambio de alcance: de borradores locales a salas y personajes en un servidor.
-Los datos permanecen en RAM; no hay IA ni persistencia durable.
-Implementación base desplegable en una instancia, no un servicio público
-endurecido completo. CORS no equivale a autenticación y el código es invitación.
-El texto del jugador se renderiza con textContent, nunca innerHTML.
+6. PARCHE ACTUAL — v1.3
+SDK openai 4.77.0; modelo predeterminado gpt-4o-mini de la familia GPT-4,
+configurable mediante OPENAI_MODEL. Chat Completions con response_format JSON.
+La salida se valida localmente; JSON mode no garantiza cumplimiento del esquema.
+El prompt exige prohibiciones estrictas y trata la entrada como datos no confiables,
+pero ninguna IA garantiza detección total ni resistencia absoluta a prompt injection.
+Se requiere revisión humana y moderación antes de un servicio público.
+
+Una evaluación simultánea por jugador, cuatro por proceso; tres/minuto por jugador
+y diez/minuto por sala. Timeout del proveedor 45 s y ACK del cliente 60 s.
+No se reintenta automáticamente la llamada de IA. Se cancela al salir/cerrar,
+se descartan respuestas obsoletas y se conserva el resultado tras desconexión.
+Fallo técnico no equivale a rechazo. Solo conservar aprobación previa si el texto
+no cambió. Rasgos ocultos en RAM; aún no hay mecánicas ni persistencia durable.
+Inicio exige al menos un jugador, todos conectados y aprobados; bloquea unión y
+edición posterior. La fase pública sincroniza la vista y recupera al reconectar.
 
 VERIFICACIÓN DE LA ENTREGA
-La entrega incluye revisión estática de estructura, referencias y contratos;
-el informe Verification.txt detalla resultados. Node.js no está disponible en
-el entorno de entrega: no se ejecutaron pruebas de sintaxis, servidor, red,
-navegador ni integración con dependencias reales.
-Seguir README para el recorrido completo antes del despliegue.
+Revisión estática y pruebas con mocks entregadas. Node/npm no están disponibles
+en el entorno: no se ejecutaron npm install, npm run check, npm test ni llamadas
+reales a OpenAI. Tampoco pruebas de navegador/HTTPS. Ver Verification.txt.
+package-lock.json debe generarse con npm install; no se fabrica uno sin resolver
+dependencias. README, .env.example y workflow Pages se incluyen en el parche.
 
 7. POLÍTICA E HISTORIAL
 Cada avance entrega código completo y GDD actualizado con hechos/pendientes.
+v1.3 — DM de aprobación IA, rasgos ocultos y vista temporal de inicio.
 v1.2 — estructura GitHub, backend, salas reales y personajes en RAM.
 v1.1 — configuración local del host y Random fijo sin IA.
 v1.0 — estructura inicial Inicio/Lobby.
