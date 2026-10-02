@@ -15,7 +15,7 @@ async function freePort() {
 }
 function launch(port,file) {
   const proc=spawn(process.execPath,[path.join(__dirname,'mock-server.cjs')],{
-    env:{...process.env,PORT:String(port),SQLITE_PATH:file,NODE_ENV:'development',OPENAI_API_KEY:'mock-only',
+    env:{...process.env,PORT:String(port),SQLITE_PATH:file,NODE_ENV:'development',GEMINI_API_KEY:'mock-only',
       FRONTEND_ORIGINS:`http://localhost:${port}`,TRUST_PROXY_HOPS:'0'},stdio:['ignore','pipe','pipe']
   });
   const ready=new Promise((resolve,reject)=> {
