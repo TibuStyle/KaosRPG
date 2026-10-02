@@ -1,0 +1,139 @@
+CRÓNICAS — PATCH NOTES / GDD VIVO
+Versión: 1.2
+Parche: Estructura GitHub, backend base, salas y personajes
+Estado: MVP multijugador de preparación; todavía no ejecuta aventuras.
+
+1. VISIÓN Y ESTADO
+RPG web cooperativo con identidad/assets propios o licenciados, inspirado en
+Dungeons & Dragons y Baldur's Gate 3. Director de Juego IA, resolución de
+acciones y soporte asíncrono persistente continúan como objetivos futuros.
+
+v1.1 era una interfaz local sin backend. v1.2 crea salas reales en Socket.io,
+valida configuración en servidor y permite enviar personajes en texto libre.
+No confundir almacenamiento temporal en RAM con persistencia durable.
+
+2. ESTRUCTURA Y CÓMO PROBAR
+Raíz: server.js, package.json, .gitignore, .env.example, README.md,
+Patch_Notes.txt y .github/workflows/pages.yml.
+Frontend: public/index.html, public/style.css, public/main.js.
+Node.js >=22; npm install; copiar .env.example a .env; npm run check; npm start.
+Abrir http://localhost:3000 en navegadores/identidades diferentes.
+GitHub Pages sirve public/ mediante el workflow; el backend se despliega aparte.
+Configurar FRONTEND_ORIGINS con los orígenes exactos permitidos y URL HTTPS del
+backend desde Opciones / Servidor en Pages. Ver README para instrucciones.
+
+3. MECÁNICAS Y CONTRATOS
+CREACIÓN DE PARTIDA
+- Host introduce nombre propio y nombre/premisa de historia, cuatro reglas y
+  líneas rojas. Servidor valida tipos, límites y enumeraciones.
+- Magia: Alta/Baja/Sin. Tono: Épico/Oscuro-Letal/Cómico.
+- Ritmo: En vivo/Asíncrono-Foro. Mortalidad: Historia/Implacable.
+- Defaults: Alta, Épico, En vivo, Historia.
+- Límites: nombre host/jugador 40; historia 80; premisa 2000; líneas rojas 4000.
+- Random sigue insertando texto fijo sin IA:
+  «Un grupo de mercenarios busca una reliquia en ruinas subterráneas.»
+- Servidor genera código A-Z de seis letras mediante crypto.randomInt y
+  comprueba unicidad en el estado activo. Unión comprueba existencia/capacidad.
+- Host accede a Sala de Espera con código grande y lista dinámica de miembros.
+- Configuración visible al grupo; aplicación semántica de reglas pendiente.
+
+PERSONAJES
+- Jugador válido accede a Creación de Personaje tras confirmación del servidor.
+- Nombre requerido hasta 60; historia libre requerida hasta 6000 caracteres.
+- Enviar Personaje guarda en RAM; puede editar y reenviar mientras siga unido.
+- Grupo ve nombre y estado «enviado», no historia ni tokens secretos.
+- La sesión propia recupera su personaje después de reconectar/recargar.
+- Sin aprobación IA, Perks, Defectos, JSON secreto ni validación semántica aún.
+- Futuro: IA aprueba/rechaza según líneas rojas; servidor valida JSON y equilibrio.
+
+SESIONES Y CICLO DE VIDA
+- Ocho jugadores más host; máximo 1000 salas por proceso.
+- Token de sesión aleatorio de 256 bits, guardado en sessionStorage por pestaña.
+- Reconexión y recuperación, reserva 15 minutos; limpieza cada 30 segundos.
+- Salas caducan a 24 horas desde creación, incluso si siguen activas.
+- Host puede cerrar sala para todos. Jugador puede salir/eliminar su personaje.
+- Host desconectado mantiene reserva; al expirar se cierra la sala.
+- Una sesión solo tiene una conexión activa: recuperación sustituye la anterior.
+- Reiniciar proceso pierde todo. Sin cuentas ni base de datos.
+- Asíncrono es una opción registrada, no un foro persistente implementado.
+
+ACCIONES Y TIRADAS — PENDIENTES
+- IA propone CD base y ajustes sujetos a validación de esquema/servidor.
+- CD final = base + suma firmada; favorables verdes/negativos, desfavorables
+  rojos/positivos. Ejemplo: Buen Navegante -5; Borracho +5.
+- Definir atributos, límites, críticos, ventaja/desventaja y equilibrio.
+- @3d-dice/dice-box representará resultados autorizados por servidor.
+
+MAPAS, IMÁGENES Y ASSETS — PENDIENTES
+- Mapas con seed persistente; revisar licencia, iframe, parámetros y CSP.
+- Catálogo con autor/licencia (Kenney, OpenGameArt, Itch.io); gratuito no implica
+  uso irrestricto. scene.changed: caché, costes, fondo/fallback vía backend.
+
+4. HITOS COMPLETADOS
+[HECHO] Inicio, Lobby, formularios exclusivos, Opciones y navegación.
+[HECHO] Responsive, labels, foco visible, estados y movimiento reducido.
+[HECHO] Configuración de host completa y Random fijo explícitamente sin IA.
+[HECHO] Separación de HTML/CSS/JS bajo public/.
+[HECHO] package.json, .gitignore y .env.example sin secretos reales.
+[HECHO] Backend Express/Socket.io y endpoint /health.
+[HECHO] Allowlist CORS y control de Origin para WebSocket.
+[HECHO] Helmet, validación, límites HTTP/eventos/mensajes y capacidad de salas.
+[HECHO] Generación y comprobación de códigos únicos A-Z de seis letras.
+[HECHO] Creación/unión reales con confirmaciones y mensajes de error.
+[HECHO] Sala de Espera del host y lista en tiempo real con conexión/estado.
+[HECHO] Nombre/historia de personaje, envío real y actualización por propietario.
+[HECHO] Historias/tokens excluidos del estado público de sala.
+[HECHO] Recuperación mediante token y reserva temporal de desconexiones.
+[HECHO] Salida, cierre por host, caducidad y limpieza periódica de memoria.
+[HECHO] URL del backend configurable para frontend GitHub Pages.
+[HECHO] Workflow GitHub Pages para publicar public/.
+[HECHO] README con contrato, despliegue, límites y pruebas manuales.
+[HECHO] GDD actualizado, pendientes y alcance diferenciados.
+
+5. TO-DO / HOJA DE RUTA
+BACKEND Y OPERACIÓN
+[ ] Instalar dependencias y generar/commitear package-lock.json real.
+[ ] Pruebas de integración con dependencias reales, navegador y despliegue HTTPS.
+[ ] Identidad autenticada, política de acceso y protección antiabuso avanzada.
+[ ] Base de datos, retención, backups y recuperación tras reinicio.
+[ ] Redis/adaptador y estado compartido antes de usar múltiples instancias.
+[ ] Contradicciones entre reglas/texto y aplicación estricta de líneas rojas.
+[ ] Métricas, alertas, auditoría sin secretos, privacidad y moderación.
+[ ] Idempotencia de crear/unirse y recuperación de ACK perdido.
+
+IA Y PERSONAJES
+[ ] Random por IA real exclusivamente desde backend.
+[ ] Esquema de Perks/Defectos, aprobación, equilibrio y secretos solo servidor.
+[ ] Validación de salidas, rechazos, costes, errores y límites de IA.
+
+NARRATIVA, MECÁNICAS Y VISUALES
+[ ] Registro compartido, empezar aventura y control de turnos.
+[ ] Modo asíncrono persistente y reglas de magia/mortalidad.
+[ ] CD, ajustes visibles, resultado autorizado, dados 3D/assets/workers.
+[ ] Mapas por seed y catálogo de recursos licenciados.
+[ ] Fondos mediante scene.changed, caché y fallback.
+
+CALIDAD
+[ ] Pruebas móviles/navegadores/teclado y carga/concurrencia.
+[ ] Pruebas CORS/WebSocket reales desde GitHub Pages y backend público.
+[ ] Autorización futura, moderación y análisis de amenazas completo.
+
+6. PARCHE ACTUAL — v1.2
+Cambio de alcance: de borradores locales a salas y personajes en un servidor.
+Los datos permanecen en RAM; no hay IA ni persistencia durable.
+Implementación base desplegable en una instancia, no un servicio público
+endurecido completo. CORS no equivale a autenticación y el código es invitación.
+El texto del jugador se renderiza con textContent, nunca innerHTML.
+
+VERIFICACIÓN DE LA ENTREGA
+La entrega incluye revisión estática de estructura, referencias y contratos;
+el informe Verification.txt detalla resultados. Node.js no está disponible en
+el entorno de entrega: no se ejecutaron pruebas de sintaxis, servidor, red,
+navegador ni integración con dependencias reales.
+Seguir README para el recorrido completo antes del despliegue.
+
+7. POLÍTICA E HISTORIAL
+Cada avance entrega código completo y GDD actualizado con hechos/pendientes.
+v1.2 — estructura GitHub, backend, salas reales y personajes en RAM.
+v1.1 — configuración local del host y Random fijo sin IA.
+v1.0 — estructura inicial Inicio/Lobby.

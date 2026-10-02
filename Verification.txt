@@ -1,0 +1,16 @@
+VERIFICACIÓN v1.2
+EJECUTADO: análisis estático automatizado con Python.
+- package.json es JSON válido.
+- IDs HTML únicos.
+- Referencias for/ARIA apuntan a IDs existentes.
+- Referencias literales byId del cliente existen en HTML.
+- CSS y JS locales referenciados existen.
+- Campos de cuatro reglas coinciden con claves del servidor.
+- Eventos de peticiones del cliente coinciden con handlers del servidor.
+- Cliente no utiliza innerHTML.
+NO EJECUTADO:
+- node --check: Node.js no está instalado (command not found).
+- npm install, auditoría de dependencias y generación del lock.
+- Pruebas Socket.io/Express reales, navegador, CORS, TLS y despliegue Pages.
+No se garantiza funcionamiento probado por estas verificaciones estáticas.
+Ejecutar npm install, npm run check y pruebas del README en Node.js 22+.
