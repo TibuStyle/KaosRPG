@@ -22,3 +22,4 @@ test('Servicio no disponible no bloquea personaje; sin fallback engañoso',async
   const controller=new AbortController();controller.abort();
   assert.equal((await createPortrait(world,'traveler',{enabled:true,signal:controller.signal,fetcher:async()=>{throw new Error('abort');}})).status,'cancelled');
 });
+

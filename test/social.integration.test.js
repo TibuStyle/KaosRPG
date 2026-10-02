@@ -20,7 +20,7 @@ function launch(port,file) {
   });
   const ready=new Promise((resolve,reject)=> {
     let log=''; const timeout=setTimeout(()=>{proc.kill();reject(new Error('Inicio agotado: '+log));},10000);
-    proc.stdout.on('data',buffer=> {log+=buffer; if(log.includes('Crónicas 1.7 escuchando')) {clearTimeout(timeout);resolve();}});
+    proc.stdout.on('data',buffer=> {log+=buffer; if(log.includes('Crónicas 1.8 escuchando')) {clearTimeout(timeout);resolve();}});
     proc.stderr.on('data',buffer=>{log+=buffer;});
     proc.once('exit',code=>{clearTimeout(timeout);reject(new Error('Servidor terminó: '+code+' '+log));});
   });
@@ -91,3 +91,4 @@ test('Socket real: entrega selectiva, aislamiento de sala, mochila dueña, idemp
     assert.deepEqual((await req(resumed,'inventory:get')).data.items,['BACKPACK_SECRET_MARKER']);
   } finally {for(const s of sockets)s.disconnect();if(server)await stop(server.proc);fs.rmSync(dir,{recursive:true,force:true});}
 });
+

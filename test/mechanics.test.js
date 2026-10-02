@@ -33,7 +33,7 @@ test('Recuperación conserva espera, configuración y tirada; resolución interr
     db.prepare("INSERT INTO members(id,room_code,name,is_host,joined_order) VALUES('p','ABCDEF','P',1,0)").run();
     db.prepare("INSERT INTO actions(id,room_code,member_id,turn_version,text,status,created_at,stage,pending_roll) VALUES('a','ABCDEF','p',0,'Salto','pending',0,'awaiting_roll',?)").run(JSON.stringify(evaluation()));
     recover(db);
-    assert.equal(db.pragma('user_version',{simple:true}),3);
+    assert.equal(db.pragma('user_version',{simple:true}),4);
     assert.equal(db.prepare('SELECT stage FROM actions').get().stage,'awaiting_roll');
     assert.equal(db.prepare('SELECT status FROM actions').get().status,'pending');
     db.prepare("UPDATE actions SET stage='resolution',roll_results=?").run('{"resultados":[],"total":0}');
@@ -43,3 +43,4 @@ test('Recuperación conserva espera, configuración y tirada; resolución interr
     assert.ok(a.roll_results);assert.ok(a.pending_roll);
   } finally {db.close();}
 });
+

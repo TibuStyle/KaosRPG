@@ -52,7 +52,8 @@ test('cancelación antes y durante llamada impide aceptar salida tardía',async(
   pending.abort();await assert.rejects(result,/cancelada/);
 });
 test('validación local rechaza campos adicionales y rasgos inventados',()=> {
-  assert.throws(()=>validateDecision({aprobado:true,mensaje_narrativo:'Sí',perks:[],defectos:[],extra:1}));
+  assert.throws(()=>validateDecision({aprobado:true,motivo_rechazo_narrativo:'',mensaje_narrativo:'Sí',perks:[],defectos:[],extra:1}));
   assert.throws(()=>validateEvaluation({requiere_dado:true,narrativa_previa:'Preparas salto',dados_a_lanzar:['1d20'],cd_base:15,
     modificadores:[{nombre:'Inventado',tipo:'ventaja',valor:3}]},[]));
 });
+

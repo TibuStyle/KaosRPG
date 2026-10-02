@@ -2,7 +2,7 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const {validateCharacter,validateFinal,validateInventory,publicSheet,socialHistory,validateChat}=require('../social');
 const {openDatabase}=require('../db');
-const character=()=>({aprobado:true,mensaje_narrativo:'Bienvenido',perks:[],defectos:[],
+const character=()=>({aprobado:true,motivo_rechazo_narrativo:'',mensaje_narrativo:'Bienvenido',perks:[],defectos:[],
   descripcion_visual_ingles:'a traveler in a red cloak',equipo_publico:[{tipo:'defensa',nombre:'Abrigo'}],inventario_privado:[]});
 const sheets=[{memberId:'p',states:['Herido']}];
 test('Ficha y mochila: límites, contrato exacto y apariencia sin inventario IA',()=> {
@@ -55,3 +55,4 @@ test('Chat: contrato y tamaño',()=> {
   assert.throws(()=>validateChat({...v,recipientId:'p'}));assert.throws(()=>validateChat({...v,text:'x'.repeat(1001)}));
   assert.throws(()=>validateChat({...v,kind:'whisper'}));assert.throws(()=>validateChat({...v,extra:1}));
 });
+

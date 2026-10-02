@@ -44,3 +44,4 @@ test('fallo de esbuild conserva artefacto anterior y limpia staging',async t=> {
   assert.equal(fs.readFileSync(path.join(vendor,'dice-box.js'),'utf8'),'ANTERIOR');
   assert.equal(fs.readdirSync(vendor).some(p=>p.startsWith('.dice-build-')),false);
 });
+

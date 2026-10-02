@@ -6,7 +6,7 @@ const { openDatabase, recover } = require('../db');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-function decision() { return {aprobado:true,mensaje_narrativo:'Bienvenido.',perks:[{nombre:'Navegante',tipo:'ventaja'}],defectos:[]}; }
+function decision() { return {aprobado:true,motivo_rechazo_narrativo:'',mensaje_narrativo:'Bienvenido.',perks:[{nombre:'Navegante',tipo:'ventaja'}],defectos:[]}; }
 test('Esquema de aprobación exacto, sin rasgos duplicados ni rechazo con rasgos',()=> {
   assert.equal(validateDecision(decision()).aprobado,true);
   for(const bad of [{...decision(),extra:true},{...decision(),aprobado:'true'},
@@ -46,3 +46,4 @@ test('SQLite real: reinicio, rasgos, sesión hash, cola, chat y recuperación de
     }
   } finally { if(db?.open) db.close(); fs.rmSync(dir,{recursive:true,force:true}); }
 });
+
