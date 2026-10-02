@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="Crónicas: salas cooperativas y creación de personajes.">
+  <title>Crónicas — RPG web</title>
+  <link rel="stylesheet" href="./style.css">
+  <script defer src="https://cdn.socket.io/4.8.1/socket.io.min.js" crossorigin="anonymous"></script>
+  <script defer src="./main.js"></script>
+</head>
+<body>
+  <header><span class="brand">CRÓNICAS</span><span class="badge">MVP · v1.2 · salas en vivo</span></header>
+  <p id="connection-status" class="connection muted" role="status" aria-live="polite">Preparando conexión…</p>
+  <main>
+    <section id="screen-home" class="screen hero" aria-labelledby="home-title">
+      <div class="sigil" aria-hidden="true">✧</div>
+      <p class="eyebrow">Tu historia empieza con una decisión</p>
+      <h1 id="home-title" tabindex="-1">Crónicas</h1>
+      <p class="muted">Crea una sala, reúne a tu grupo y prepara sus personajes. Director de Juego IA y mecánicas: pendientes.</p>
+      <div class="menu">
+        <button id="play-button" class="btn btn-primary" type="button">Jugar</button>
+        <button id="options-button" class="btn" type="button">Opciones / Servidor</button>
+      </div>
+      <p class="help">Las salas viven en memoria del servidor y caducan a las 24 horas.</p>
+    </section>
+    <section id="screen-lobby" class="screen" aria-labelledby="lobby-title" hidden>
+      <button id="back-button" class="btn btn-back" type="button">← Volver al inicio</button>
+      <p class="eyebrow">Reúne a tu grupo</p>
+      <h2 id="lobby-title" tabindex="-1">Lobby de historias</h2>
+      <p class="muted">Crea una sala real o únete con un código de seis letras.</p>
+      <div class="cards">
+        <article class="card">
+          <h3>Crear Historia</h3>
+          <p class="muted">Configura tu mundo y espera a tus jugadores.</p>
+          <button id="create-button" class="btn btn-primary" type="button" aria-controls="panel-create" aria-expanded="false">Crear Historia</button>
+        </article>
+        <article class="card">
+          <h3>Unirse a Historia</h3>
+          <p class="muted">Accede a la sala y crea tu personaje.</p>
+          <button id="join-button" class="btn" type="button" aria-controls="panel-join" aria-expanded="false">Unirse a Historia</button>
+        </article>
+      </div>
+      <section id="panel-create" class="card panel" aria-labelledby="create-title" hidden>
+        <div class="panel-heading"><h3 id="create-title">Preparar historia</h3><button class="btn" type="button" data-close-panel>Cerrar</button></div>
+        <p class="notice">El servidor valida y conserva esta configuración en memoria. Las reglas y líneas rojas todavía no se aplican a una narrativa ni a personajes.</p>
+        <form id="create-form" class="form-grid">
+          <div><label for="host-name">Tu nombre como anfitrión</label><input id="host-name" name="playerName" maxlength="40" required autocomplete="nickname"></div>
+          <div><label for="story-name">Nombre del juego</label><input id="story-name" name="storyName" maxlength="80" required placeholder="Las cenizas de Valdoria"></div>
+          <div>
+            <div class="field-heading"><label for="story-premise">Premisa (opcional)</label><button id="random-premise-button" class="btn btn-random" type="button" aria-describedby="random-help">⚄ Random</button></div>
+            <textarea id="story-premise" name="premise" maxlength="2000" aria-describedby="random-help"></textarea>
+            <p id="random-help" class="help">Sustituye la premisa por un texto fijo de prueba; no usa IA.</p>
+            <p id="random-status" class="status" role="status"></p>
+          </div>
+          <div class="host-settings">
+            <div><label for="magic-level">Nivel de Magia</label><select id="magic-level" name="magicLevel"><option value="high">Alta Magia</option><option value="low">Baja Magia</option><option value="none">Sin Magia</option></select></div>
+            <div><label for="adventure-tone">Tono de la Aventura</label><select id="adventure-tone" name="adventureTone"><option value="epic">Épico</option><option value="dark">Oscuro/Letal</option><option value="comic">Cómico</option></select></div>
+            <div><label for="turn-pace">Ritmo de Turnos</label><select id="turn-pace" name="turnPace"><option value="live">En vivo</option><option value="async">Asíncrono/Foro</option></select></div>
+            <div><label for="mortality">Mortalidad</label><select id="mortality" name="mortality"><option value="story">Modo Historia</option><option value="relentless">Modo Implacable</option></select></div>
+          </div>
+          <div><label for="red-lines">Líneas Rojas (Baneos)</label><textarea id="red-lines" name="redLines" maxlength="4000" rows="5" aria-describedby="red-lines-help"></textarea><p id="red-lines-help" class="help">Opcional, máximo 4000 caracteres. Visible para el grupo; aplicación automática pendiente.</p></div>
+          <button class="btn btn-primary" type="submit">Validar y crear sala</button>
+          <p id="create-status" class="status" role="status" aria-live="polite"></p>
+        </form>
+      </section>
+      <section id="panel-join" class="card panel" aria-labelledby="join-title" hidden>
+        <div class="panel-heading"><h3 id="join-title">Unirse al grupo</h3><button class="btn" type="button" data-close-panel>Cerrar</button></div>
+        <form id="join-form" class="form-grid">
+          <div><label for="player-name">Tu nombre de jugador</label><input id="player-name" name="playerName" maxlength="40" required autocomplete="nickname"></div>
+          <div><label for="room-code">Código de sala</label><input id="room-code" name="code" minlength="6" maxlength="6" pattern="[A-Za-z]{6}" required autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCDEF" aria-describedby="code-help"><p id="code-help" class="help">Seis letras A-Z. Las minúsculas se normalizan.</p></div>
+          <button class="btn btn-primary" type="submit">Unirse y crear personaje</button>
+          <p id="join-status" class="status" role="status" aria-live="polite"></p>
+        </form>
+      </section>
+    </section>
+    <section id="screen-session" class="screen" aria-labelledby="session-title" hidden>
+      <p class="eyebrow" id="session-role"></p>
+      <h2 id="session-title" tabindex="-1">Sala de Espera</h2>
+      <div class="card">
+        <p class="muted">Código de la sala</p><div id="session-code" class="room-code"></div>
+        <button id="copy-code" class="btn" type="button">Copiar código</button>
+        <p id="session-status" class="status" role="status" aria-live="polite"></p>
+        <h3>Configuración del mundo</h3><p id="world-summary"></p>
+        <h3>Grupo en tiempo real</h3><ul id="member-list" class="member-list" aria-live="polite" aria-relevant="additions text"></ul>
+        <p class="help">Máximo ocho jugadores más anfitrión. «Enviado» no significa aprobado por IA.</p>
+      </div>
+      <section id="character-panel" class="card panel" aria-labelledby="character-title" hidden>
+        <h3 id="character-title">Creación de Personaje</h3>
+        <p class="notice">La historia se guarda en memoria del servidor; no se envía al resto del grupo. No hay IA ni aprobación automática. No incluyas datos sensibles.</p>
+        <form id="character-form" class="form-grid">
+          <div><label for="character-name">Nombre del Personaje</label><input id="character-name" name="name" maxlength="60" required autocomplete="off"></div>
+          <div><label for="character-history">Historia del personaje</label><textarea id="character-history" name="history" maxlength="6000" rows="12" required aria-describedby="character-help"></textarea><p id="character-help" class="help">Texto libre, hasta 6000 caracteres. Puedes editar y volver a enviar.</p></div>
+          <button class="btn btn-primary" type="submit">Enviar Personaje</button>
+          <p id="character-status" class="status" role="status" aria-live="polite"></p>
+        </form>
+      </section>
+      <div class="actions"><button id="leave-button" class="btn" type="button">Salir de la sala</button></div>
+    </section>
+    <noscript><p class="notice">Activa JavaScript para jugar.</p></noscript>
+  </main>
+  <footer>Dados 3D · mapas · Director de Juego IA — pendientes</footer>
+  <dialog id="options-dialog" aria-labelledby="options-title">
+    <h2 id="options-title">Opciones / Servidor</h2>
+    <form id="server-form" class="form-grid">
+      <div><label for="backend-url">URL del backend</label><input id="backend-url" type="url" required placeholder="https://tu-backend.example.com" aria-describedby="backend-help"><p id="backend-help" class="help">URL base, sin ruta. En GitHub Pages configura un backend HTTPS externo. No puedes cambiarla dentro de una sala.</p></div>
+      <button class="btn btn-primary" type="submit">Guardar y conectar</button>
+      <p id="server-status" class="status" role="status"></p>
+    </form>
+    <p class="help">Audio y dados pendientes. Se respeta el movimiento reducido del sistema.</p>
+    <form method="dialog"><button class="btn" autofocus>Cerrar</button></form>
+  </dialog>
+</body>
+</html>
