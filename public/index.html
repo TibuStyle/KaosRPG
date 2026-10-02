@@ -8,10 +8,11 @@
   <title>Crónicas — RPG web</title>
   <link rel="stylesheet" href="./style.css">
   <script defer src="https://cdn.socket.io/4.8.1/socket.io.min.js" crossorigin="anonymous"></script>
+  <script src="./social.js" defer></script>
   <script defer src="./main.js"></script>
 </head>
 <body>
-  <header><span class="brand">CRÓNICAS</span><span class="badge">v1.5 · Asíncrono persistente</span></header>
+  <header><span class="brand">CRÓNICAS</span><span class="badge">v1.7 · La Taberna</span></header>
   <p id="connection-status" class="connection muted" role="status" aria-live="polite">Preparando conexión…</p>
   <main>
     <section id="screen-home" class="screen hero" aria-labelledby="home-title">
@@ -87,10 +88,13 @@
       </div>
       <section id="character-panel" class="card panel" aria-labelledby="character-title" hidden>
         <h3 id="character-title">Creación de Personaje</h3>
-        <p class="notice">El backend envía tu nombre e historia, junto con las reglas del mundo, a Google Gemini para evaluarlos. Tu historia no se publica al grupo. El estado se guarda de forma persistente en SQLite. No incluyas datos sensibles.</p>
+        <p class="notice">El backend envía tu nombre e historia, junto con las reglas del mundo, a Google Gemini para evaluarlos. La historia aprobada será pública en tu ficha: no incluyas secretos. La mochila se administra por separado y es privada. El estado se guarda de forma persistente en SQLite. No incluyas datos sensibles.</p>
         <form id="character-form" class="form-grid">
           <div><label for="character-name">Nombre del Personaje</label><input id="character-name" name="name" maxlength="60" required autocomplete="off"></div>
           <div><label for="character-history">Historia del personaje</label><textarea id="character-history" name="history" maxlength="6000" rows="12" required aria-describedby="character-help"></textarea><p id="character-help" class="help">Texto libre, hasta 6000 caracteres. Puedes editar y volver a evaluar antes de empezar. Cada envío aceptado para evaluación puede generar coste de API.</p></div>
+          <div><label for="character-appearance">Apariencia Estética</label><textarea id="character-appearance" name="appearance" rows="6" maxlength="1000" aria-describedby="appearance-help" placeholder="Cabello plateado, abrigo de lana verde, ojos ámbar..."></textarea><p id="appearance-help" class="help">Solo visual: no concede equipo, armas, poderes ni ventajas. El backend traduce esta descripción al inglés para Pollinations. Hasta 1000 caracteres.</p></div>
+          <label class="consent"><input type="checkbox" id="public-consent" required> Entiendo que mi historia aprobada se publicará al grupo. No contiene información secreta.</label>
+          <label class="consent"><input type="checkbox" id="portrait-consent" required> Autorizo enviar mi apariencia estética y reglas generales del mundo a Pollinations. La URL del retrato contiene el prompt; no incluiré datos sensibles.</label>
           <button class="btn btn-primary" type="submit">Enviar Personaje</button>
           <p id="character-status" class="status" role="status" aria-live="polite"></p>
         </form>
@@ -125,6 +129,18 @@
           <aside class="card"><h4>Jugadores y cola</h4><ul id="game-member-list" class="member-list"></ul><p class="help">El orden incluye al Director. Una desconexión no salta el turno.</p></aside>
         </div>
       </section>
+      <aside id="social-panel" class="card tavern-chat" aria-labelledby="social-title">
+        <h3 id="social-title">La Taberna · Off-Rol</h3>
+        <p class="help">Coordinación humana. Este chat y los susurros NO llegan a Gemini ni consumen tu turno. Haz clic en un nombre para susurrar. Privados al grupo, no cifrados de extremo a extremo.</p>
+        <button id="social-history" class="btn" type="button">Mensajes anteriores</button>
+        <div id="social-log" role="log" aria-live="polite" aria-relevant="additions" class="social-log"></div>
+        <form id="social-form" class="form-grid">
+          <label for="social-target">Canal / destinatario</label><select id="social-target"><option value="">Global (Off-Rol)</option></select>
+          <label for="social-text">Mensaje</label><textarea id="social-text" rows="3" maxlength="1000" required></textarea>
+          <button id="social-send" class="btn btn-primary" type="submit">Enviar mensaje humano</button>
+          <p id="social-status" class="status" role="status"></p>
+        </form>
+      </aside>
       <div class="actions"><button id="start-button" class="btn btn-primary" type="button" hidden disabled>Empezar Aventura</button><button id="leave-button" class="btn" type="button">Salir de la sala</button></div>
     </section>
     <noscript><p class="notice">Activa JavaScript para jugar.</p></noscript>
@@ -139,6 +155,31 @@
     </form>
     <p class="help">Audio pendiente. Dados 3D usan WebGL y workers locales. Se respeta el movimiento reducido del sistema.</p>
     <form method="dialog"><button class="btn" autofocus>Cerrar</button></form>
+  </dialog>
+  <dialog id="sheet-dialog" class="parchment" aria-labelledby="sheet-title">
+    <form method="dialog"><button class="btn" autofocus>Cerrar ficha</button></form>
+    <h2 id="sheet-title">Ficha pública</h2>
+    <p id="sheet-status" role="status"></p>
+    <div id="sheet-content" hidden>
+      <img id="sheet-avatar" class="large-avatar" alt="Retrato pixel art del personaje" referrerpolicy="no-referrer">
+      <p id="sheet-avatar-status" class="help"></p>
+      <h3>Historia pública</h3><p id="sheet-history" class="preserve-lines"></p>
+      <button id="publish-history" class="btn" type="button" hidden>Publicar mi historia existente</button>
+      <h3>Equipo público · Ataque / Defensa</h3><ul id="sheet-equipment"></ul>
+      <p class="help">Equipo narrativo, sin estadísticas de ataque/defensa. No procede de la apariencia.</p>
+      <h3>Estados / Buffs / Debuffs</h3><ul id="sheet-states" class="state-list"></ul>
+      <p class="help">Etiquetas narrativas públicas actualizadas por el Director IA al resolver una tirada. No alteran automáticamente la CD.</p>
+      <button id="inventory-open" class="btn" type="button" hidden>Mochila (Privado)</button>
+    </div>
+  </dialog>
+  <dialog id="inventory-dialog" class="parchment" aria-labelledby="inventory-title">
+    <form method="dialog"><button class="btn" autofocus>Cerrar mochila</button></form>
+    <h2 id="inventory-title">Mochila (Privado)</h2>
+    <p>Solo tú recibes estos objetos. No se publican, no se envían a Gemini y no conceden ventajas. Registro narrativo manual, no economía validada.</p>
+    <form id="inventory-form" class="form-grid"><label for="inventory-items">Un objeto por línea · máximo 30</label>
+      <textarea id="inventory-items" rows="10" maxlength="3630"></textarea><button class="btn" type="submit">Guardar mi inventario</button>
+      <p id="inventory-status" role="status"></p>
+    </form>
   </dialog>
 </body>
 </html>

@@ -57,6 +57,7 @@ function controls() {
   byId('leave-button').disabled = disabled;
   byId('start-button').disabled = disabled || !session?.room.canStart;
   gameControls(disabled);
+  byId('social-send').disabled=socialSending||!session||!socket?.connected||resuming;
 }
 function ownMember() { return session?.room.members.find(m => m.id === session.memberId); }
 function request(event, payload) {
@@ -76,6 +77,7 @@ function request(event, payload) {
 function clearSession() {
   token = null; session = null;
   chatMessages.clear(); pendingAction = null;
+  resetSocial();
   byId('action-form').reset();
   byId('narrative-chat').replaceChildren();
   storage.remove('cronicas.token');
@@ -115,6 +117,8 @@ function render(room) {
   });
   byId('member-list').replaceChildren(...nodes);
   byId('member-list').parentElement.hidden = starting;
+  decorateMembers(byId('member-list'),room.members);
+  renderSocial(room);
   renderGame(room);
   if (ownMember()?.characterStatus === 'evaluating') status('character', 'El DM está evaluando tu personaje...');
   controls();
@@ -127,9 +131,11 @@ function accept(data) {
   if (data.character) {
     byId('character-name').value = data.character.name;
     byId('character-history').value = data.character.history;
+    byId('character-appearance').value = data.character.appearance || '';
     showCharacterDecision(data.character);
   }
   showScreen('session');
+  void loadSocial();
 }
 function connect() {
   if (typeof window.io !== 'function') {
@@ -172,6 +178,7 @@ function connect() {
       if (wasEvaluating && ownMember()?.characterStatus !== 'evaluating' && !busy) recoverDecision();
     }
   });
+  socket.on('social:message',message=> {if(session)addSocial(message);});
   socket.on('room:closed', data => {
     clearSession(); showScreen('lobby'); connection(data.reason); controls();
   });
@@ -266,6 +273,8 @@ byId('join-form').addEventListener('submit', event => {
 byId('character-form').addEventListener('submit', event => {
   event.preventDefault();
   const fields = Object.fromEntries(new FormData(event.currentTarget));
+  fields.publicConsent=byId('public-consent').checked;
+  fields.portraitConsent=byId('portrait-consent').checked;
   submit('character-form', 'character', async () => {
     const expectedToken = token;
     try {
@@ -354,6 +363,7 @@ function renderGame(room) {
     return item;
   });
   byId('game-member-list').replaceChildren(...list);
+  decorateMembers(byId('game-member-list'),t.order.map(id=>room.members.find(m=>m.id===id)));
 }
 let rolling = false;
 function cachedRoll(id) {
@@ -435,4 +445,5 @@ byId('history-button').addEventListener('click',async () => {
   } catch(error) { status('action',error.message,true); }
   finally { busy = false; controls(); }
 });
+initSocial();
 connect();
