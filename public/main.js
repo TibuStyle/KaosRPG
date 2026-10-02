@@ -121,6 +121,7 @@ const labels = {
   epic: 'Épico', dark: 'Oscuro/Letal', comic: 'Cómico',
   story: 'Modo Historia', relentless: 'Modo Implacable'
 };
+
 function render(room) {
   if (!session) return;
   const prevPhase = session.room?.phase;
@@ -140,11 +141,30 @@ function render(room) {
   byId('leave-button').hidden = starting && !session.isHost;
   const w = room.world;
   byId('world-summary').textContent = `${w.storyName}\n${[w.magicLevel, w.adventureTone, w.mortality].map(v => labels[v] || v).join(' · ')}\nPremisa: ${w.premise || 'No especificada'}\nLíneas rojas: ${w.redLines || 'No especificadas'}\nMotor asíncrono estricto · sin caducidad automática`;
+  
+  // AQUÍ ESTÁ LA CORRECCIÓN: Desglosamos la línea gigante en partes claras
   const nodes = room.members.map(member => {
     const item = document.createElement('li');
-    item.textContent = `${member.name}${member.isNPC ? ' · NPC (controlado por Director)' : ''}${member.isHost ? ' · Anfitrión' : ''}${member.id === session.memberId ? ' · Tú' : ''} — ${member.connected ? 'Conectado' : 'Desconectado (turno conservado)'}${!member.isHost ? ` · ${{ draft: 'Creando personaje', evaluating: 'Evaluando con el DM...', rejected: 'Rechazado: requiere cambios', approved: 'Aprobado' }[member.characterStatus] \vert{}\vert{} 'Creando personaje'}${member.characterName ? ': ' + member.characterName : ''}` : ''}`;
+    
+    let role = '';
+    if (member.isNPC) role += ' · NPC (controlado por Director)';
+    if (member.isHost) role += ' · Anfitrión';
+    if (member.id === session.memberId) role += ' · Tú';
+    
+    let statusText = member.connected ? 'Conectado' : 'Desconectado (turno conservado)';
+    
+    let charInfo = '';
+    if (!member.isHost) {
+      const statusMap = { draft: 'Creando personaje', evaluating: 'Evaluando con el DM...', rejected: 'Rechazado: requiere cambios', approved: 'Aprobado' };
+      const charStatus = statusMap[member.characterStatus] || 'Creando personaje';
+      const charName = member.characterName ? ': ' + member.characterName : '';
+      charInfo = ` · ${charStatus}${charName}`;
+    }
+    
+    item.textContent = `${member.name}${role} — ${statusText}${charInfo}`;
     return item;
   });
+  
   byId('member-list').replaceChildren(...nodes);
   byId('member-list').parentElement.hidden = starting;
   decorateMembers(byId('member-list'),room.members);
@@ -165,6 +185,7 @@ function render(room) {
   if (ownMember()?.characterStatus === 'evaluating') status('character', 'El DM está evaluando tu personaje...');
   controls();
 }
+
 function accept(data) {
   token = data.token;
   storage.set('cronicas.token', token);
