@@ -10,3 +10,5 @@ data/
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
+
+public/vendor/

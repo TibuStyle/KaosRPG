@@ -1,28 +1,29 @@
-CRÓNICAS 1.4 — VERIFICACIÓN DE ENTREGA
+CRÓNICAS1.5 — VERIFICACIÓN DE ENTREGA
 
 REALIZADO
-- Lectura completa de Codigo_completo_v1.3.txt y Patch_Notes_v1.3.txt.
-- Extracción de archivos originales; conservación de frontend/base HTTP y workflow.
-- Implementación SQLite, aprobación extraída a approval.js, turnos, acciones y chat.
-- JSON válido de package.json con dependencia better-sqlite3 11.10.0.
-- IDs HTML únicos y referencias byId literales existentes.
-- Sin selector/campo de ritmo en HTML, frontend ni servidor activo.
-- Sin innerHTML en frontend; datos del chat renderizados con textContent.
-- Ejecución del esquema SQL extraído de db.js con Python sqlite3: tablas,
-  restricciones, relaciones, inserciones y borrado en cascada comprobados.
-  Esto NO comprueba el driver better-sqlite3 ni el servidor Node.
-- ZIP generado, leído de vuelta y comprobado (integridad CRC); sin secretos,
-  base de datos real, .env, node_modules ni package-lock.json fabricado.
+- Lectura del proyecto ZIP1.4 y notas adjuntas; modificación de código existente.
+- Revisión estática servidor/frontend/contratos/reintento y privacidad literal.
+- package.json válido; referencias byId e IDs HTML únicas/existentes.
+- Esquema inicial y migración v2 ejecutados con Python sqlite3, conservación de
+  datos, espera tras recuperación, resolución failed conservando tirada y cascadas.
+  Esto NO verifica el driver better-sqlite3 ni ejecución de servidor Node.
+- ZIP integral comprobado con CRC y TXT comparado con todos los archivos del árbol.
+- No .env real, DB real, token, clave, node_modules ni lockfile inventado.
 
-NO REALIZADO / PENDIENTE
-- Node.js/npm no están disponibles en el entorno (command -v sin resultado).
-- No se instalaron dependencias; better-sqlite3 requiere instalación local.
-- No se ejecutaron node --check, npm run check ni npm test.
-- Tests unitarios/integración se entregan, no se declaran aprobados.
-- No se ejecutaron llamadas OpenAI reales, navegador, HTTPS, Pages ni carga.
-- No se certifica ausencia de errores de ejecución: seguir README antes de desplegar.
+NO REALIZADO
+- command -v node/npm sin resultado: no se puede ejecutar npm install/check/test.
+- No hay red para descargar distribución DiceBox: public/vendor lo genera npm
+  install (postinstall) o npm run build:frontend. No se entrega build precompilado.
+- No se ejecutan esbuild, workers, WASM, WebGL o navegador; no certificar carga
+  correcta o API de la librería hasta instalación y aceptación manual.
+- No hay prueba OpenAI real, HTTPS/CSP/Pages, carga, móviles o backup/restore.
+- Tests Node unitarios y Socket+SQLite reales con IA mock ENTREGADOS, NO APROBADOS.
 
-Las pruebas nuevas incluyen driver SQLite real, Socket.io real y proveedor IA mock
-sin facturación. Tests de reinicio, privacidad, idempotencia y autorización entregados.
-El mock está aislado bajo test/ y npm start no lo usa.
-Persistencia requiere conservar SQLITE_PATH en volumen durable y una sola instancia.
+Tests nuevos: validación de CD/dados/rasgos, privacidad de etiquetas, rango/suma,
+recuperación de awaiting_roll/resolution; integración exige persistencia de espera
+tras reinicio, rechaza autor ajeno/números inválidos, deduplica resultado igual,
+rechaza diferentes, simula fallo final y comprueba reintento con mismo resultado.
+
+Resultados cliente son manipulables. Controles de rango/suma no verifican azar.
+Redacción literal/prompt no garantizan confidencialidad semántica de rasgos.
+No autoavance por desconexión, error o reinicio; una instancia por DB durable.

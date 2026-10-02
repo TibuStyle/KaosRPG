@@ -1,159 +1,177 @@
-# Crónicas 1.4 — Persistencia y motor asíncrono estricto
+# Crónicas 1.5 — Tiradas dinámicas y UI matemática
 
-Proyecto completo basado en v1.3. Express / Socket.io, aprobación OpenAI y tablero
-narrativo por turnos con SQLite local. No hay selector de ritmo ni modo en vivo.
+RPG web cooperativo, siempre asíncrono y persistente. Express, Socket.io,
+SQLite y OpenAI backend. No hay selector de ritmo, salto ni timeout de turno.
 
-## Instalación local
+## Probar localmente
 
-1. Instala Node.js >=22 y ejecuta `npm install` desde la raíz del proyecto.
-   Se añade `better-sqlite3` 11.10.0; es un módulo nativo. Si no hay binario
-   precompilado para tu plataforma, instala las herramientas de compilación de
-   Node (Python, compilador C/C++ y herramientas del sistema). Conserva y
-   commitea el `package-lock.json` real generado. No se entrega uno inventado.
-2. Copia `.env.example` a `.env` y configura `OPENAI_API_KEY` en el backend.
-3. Ejecuta `npm run check`, `npm test`, `npm start`.
-4. Abre `http://localhost:3000` como host y en otro navegador como jugador.
+Requiere Node.js >=22, npm y acceso al registro npm para instalar dependencias.
 
-Sin clave, funcionan creación, unión y recuperación, pero no aprobación ni
-narración. No hay aprobación simulada ni bypass en producción.
-La instalación de dependencias y pruebas Node no se ejecutaron en el entorno de
-entrega; consulta `Verification.txt`. No se incluyen node_modules ni una DB con
-sesiones reales.
+```sh
+npm install
+# copiar .env.example a .env y configurar OPENAI_API_KEY
+npm run check
+npm test
+npm start
+```
 
-## SQLite: datos durables y operación
+Abrir http://localhost:3000 como host y otro navegador como jugador.
+`npm install` ejecuta postinstall: compila DiceBox con esbuild y copia TODOS sus
+assets distribuidos, workers, WASM y licencias a public/vendor/. Si usas
+--ignore-scripts, debes ejecutar `npm run build:frontend` antes de iniciar.
+No abras index.html con file://: módulos, workers y WASM necesitan HTTP(S).
 
-`SQLITE_PATH=./data/cronicas.sqlite` indica el archivo local (por defecto,
-`data/cronicas.sqlite` junto al código). Se crea automáticamente al iniciar.
-`db.js` configura foreign_keys, WAL, synchronous=FULL, busy_timeout y una
-migración inicial transaccional, identificada por PRAGMA user_version=1.
-Un formato más reciente provoca error en lugar de sobrescribirlo.
+No se incluyen node_modules, secretos, DB real, binarios de terceros ni lockfile
+inventado. Genera y conserva package-lock.json con la instalación real.
+**El entorno de entrega no tiene Node/npm ni internet: no se han instalado ni
+probado DiceBox, better-sqlite3, los tests Node, navegador o proveedor real.**
+Se entrega integración y build reproducible por versión, no certificación runtime.
+Consulta Verification.txt. El ZIP es el proyecto fuente completo; su instalación
+normal descarga y genera los recursos de terceros necesarios para funcionar.
 
-Tablas relacionales: rooms, members, sessions, characters, traits, turn_order,
-actions, messages y rate_limits. Configuración, miembros, historias, decisiones,
-rasgos secretos, sesión, orden, turno, acciones y chat se consultan/actualizan en
-SQLite; no hay mapas RAM de salas ni sesiones. Mapas en memoria solo contienen
-AbortControllers de trabajos IA y límites de transporte. La presencia se registra
-en SQLite, pero sus socket_id son efímeros y se invalidan en cada arranque.
+Dependencias nuevas: @3d-dice/dice-box 1.1.4 y esbuild 0.25.5. better-sqlite3
+11.10.0 es nativa: requiere binario compatible o herramientas de compilación.
 
-Tokens: 256 bits, sessionStorage por pestaña; la DB conserva SHA-256 del token,
-no su texto en claro. Se puede recuperar con el mismo token tras reinicio. Los
-hashes tampoco aparecen en snapshots ni prompts. El token sigue siendo una
-credencial bearer, no una identidad autenticada. Perder/borrar sessionStorage o
-cerrar una pestaña puede perder el acceso: no hay cuentas ni recuperación de
-credenciales. No publicar la DB: contiene historias y rasgos en texto claro.
+## Decisiones mecánicas explícitas
 
-Al reiniciar: todos offline, evaluaciones interrumpidas vuelven a draft (requieren
-reenviar), acciones pending pasan a failed, turno y acción se conservan. Resultados
-approved/rejected completados, perks/defectos y chat siguen intactos. Apagar no
-cierra ni elimina salas. No hay TTL de 24 h, reserva de 15 min ni expulsión por
-inactividad. La sala se borra por cierre explícito del host, con cascadas.
+1. El servidor lee traits del autor en SQLite y envía mundo, últimos 20 mensajes,
+   acción, rol y rasgos ocultos a la evaluación OpenAI.
+2. Structured Outputs: response_format json_schema con strict=true y exactamente
+   requiere_dado, narrativa_previa, dados_a_lanzar, cd_base, modificadores.
+   OPENAI_MODEL debe admitir Structured Outputs (default gpt-4o-mini).
+3. Trivial: false, dados=[], cd_base=0, modificadores=[]; resolución y avance atómico.
+4. Riesgo: se almacena pending_roll; no avanza. CD base 1..100. Notaciones NdS:
+   N=1..12; S=4/6/8/10/12/20/100; máximo 8 grupos y 12 dados físicos.
+5. Solo rasgos existentes pueden modificar; una aplicación por rasgo, valores
+   +1..+5 ventaja, -1..-5 desventaja. El servidor rechaza rasgos inventados o signos
+   incoherentes. La elección semántica del rasgo y CD depende de IA y no es balance formal.
+6. CD final = clamp(1,100, CD base - suma(modificadores)). Todos los dados se suman.
+   Éxito si total >= CD final. Igualdad es éxito. Ej.: CD15 y ventaja+3 => CD12.
+   Ventaja/desventaja son ajustes, NO doble d20. No hay críticos, HP ni daño separado.
+7. UI muestra preparación, notaciones, fórmula y ajustes verde/rojo con etiquetas
+   neutras “Ajuste N”. Los nombres de perks/defectos continúan privados.
+8. DiceBox lanza el array exacto, espera onRollComplete y envía resultados
+   {caras,valor} individuales más total. El servidor valida dados y suma, fija el
+   veredicto y hace la segunda llamada IA para narrar la consecuencia.
+9. Resultado final público incluye resumen numérico. Mensaje final, completed/done
+   y avance se confirman juntos. Una tirada nunca avanza por sí sola.
 
-**Solo una instancia de servidor por archivo SQLite.** Dos procesos invalidarían
-presencia/recuperación y no compartirían broadcasts ni trabajos. No usar PM2 en
-cluster, varias réplicas o un archivo WAL en un filesystem de red. Un adaptador
-Socket.io y leases/jobs distribuidos son trabajo futuro.
+Los rasgos se envían al proveedor solo en aprobación/evaluación mecánica. La
+resolución final recibe ajustes neutros y veredicto calculado, no rasgos ni tokens.
+Redacción literal de nombres en narrativas más prompt evita exposición directa,
+pero NO garantiza que una IA no parafrasee/infiere un secreto. Moderación/revisión
+humana pendientes. No introducir datos sensibles en historias o chat.
 
-Para despliegue, montar un volumen persistente para la DB; un disco efímero de
-hosting destruye la persistencia. GitHub Pages solo sirve public/ y no SQLite.
-No poner la DB bajo public/. Mantener permisos privados en archivo y directorio.
-Backup simple: detener servidor y copiar DB; si se hace backup online, usar una
-herramienta con SQLite backup API. No copiar solo .sqlite mientras WAL está activo.
-Retención, backups automáticos, cifrado y cuentas quedan pendientes.
-No se puede migrar lo que v1.3 ya perdió de RAM: la DB comienza vacía.
+## Persistencia y migración
 
-## Core loop: cola ininterrumpible
+`db.js` migra automáticamente user_version=1 a 2 en una transacción, manteniendo
+salas, sesiones, personajes, acciones, chat y turnos de 1.4. Añade actions.stage,
+pending_roll y roll_results. Una DB nueva crea esquema v1 y aplica v2. Versiones
+más recientes se rechazan. Haz backup antes de actualizar; no volver a servidor 1.4
+sobre una DB v2. Ningún dato perdido de versiones RAM se puede recuperar.
 
-- Solo host inicia desde lobby, con al menos un jugador y todos los jugadores
-  conectados y aprobados. Host no necesita personaje.
-- Se fija y persiste el orden: host (Director), jugadores por orden de unión.
-- La fase cambia a playing y se abre Vista de Partida: chat, barra lateral con
-  participantes/conexión/orden, input y estado del turno.
-- El Director escribe la primera acción o planteamiento; la IA continúa después
-  de cada acción. No se genera una apertura automática facturable al pulsar inicio.
-- Solo el participante actual puede enviar. El servidor comprueba membresía,
-  conexión vigente, fase, propietario y versión del turno; el DOM no autoriza.
-- Acción, mensaje y estado pending se guardan en una transacción antes de la IA.
-  El texto de la acción pasa a ser público: no introducir datos sensibles.
-- Durante IA el input queda bloqueado para todos. Respuesta narrativa validada,
-  mensaje IA, finalización y avance circular se guardan en una sola transacción.
-- Desconexión, demora, error técnico o reinicio no saltan ni pasan el turno.
-  La IA puede terminar después de una desconexión del autor, si la acción ya
-  estaba enviada. El siguiente turno se asigna incluso a alguien offline y espera.
-- Si la IA falla, el autor ve un botón para reintentar la misma acción. No se vuelve
-  a publicar el mensaje del jugador ni se altera la acción ya guardada.
-- No hay chat libre paralelo, timeout de turno, votación de salto o cambio de orden.
-  En playing, jugadores no pueden eliminar su plaza/personaje: pueden ausentarse
-  cerrando la pestaña o desconectándose. Solo el host puede cerrar para todos.
-  Si se pierde definitivamente un token, la partida puede quedar bloqueada;
-  diseñar recuperación autenticada antes de un servicio público.
+Estados durables:
+- evaluation + pending: primera llamada IA en curso.
+- awaiting_roll + pending: configuración guardada; botón disponible al autor.
+- resolution + pending: números ya guardados; segunda llamada IA en curso.
+- done + completed: consecuencia confirmada y turno avanzado.
+- evaluation/resolution + failed: reintento explícito del autor del turno actual.
+
+Arranque marca presencia offline. Evaluaciones de personajes interrumpidas vuelven
+a draft. Trabajos evaluation/resolution de acciones pasan a failed conservando
+configuración y resultados. awaiting_roll NO pasa a failed: conserva el mismo
+botón y dados incluso después del reinicio. Reintentar resolution no reevalúa ni
+vuelve a tirar. No hay llamadas IA/reintentos automáticos facturables.
+
+Cliente guarda resultados en sessionStorage antes de enviarlos. ACK perdido o
+recarga posterior al lanzamiento permite reenviar los mismos números. El servidor
+acepta el primer resultado válido y deduplica iguales; datos diferentes fallan.
+Si la pestaña se cierra DURANTE las físicas antes de obtener resultados, la DB
+sigue esperando: al volver puede lanzar, porque no existe resultado recibido.
+Perder sessionStorage pierde token y resultados cliente aún no guardados en DB.
+Token perdido puede bloquear la cola; recuperación autenticada pendiente.
+
+SQLite: WAL, FK ON, synchronous FULL, busy_timeout 5000; volumen durable fuera
+public/. Sesiones SHA-256 de tokens 256 bits, no cuentas. Una conexión por sesión.
+Solo UNA instancia por DB; no cluster, réplicas ni WAL sobre filesystem de red.
+No hay TTL, autoexpulsión, salto por desconexión ni cierre al apagar. Host puede
+borrar sala completa; jugador solo puede eliminar plaza en lobby. Backups online
+requieren SQLite backup API; no copiar únicamente .sqlite si WAL está activo.
 
 ## Contrato Socket.io
 
-Solicitudes con ACK `{ok:true,data}` / `{ok:false,error}`:
+ACK {ok:true,data} / {ok:false,error}; eventos room:state, room:closed, session:replaced.
 
-- `room:create {playerName,world}`. World exacto: storyName, premise, redLines,
-  magicLevel, adventureTone, mortality. No campo de ritmo; claves extra rechazadas.
-- `room:join {playerName,code}` solo en lobby.
-- `session:resume {token}`: token propio, memberId, isHost, snapshot y personaje
-  propio (nombre, historia, status y narrativa; nunca rasgos).
-- `character:submit {name,history}`: aprobación original conservada, 45 s de
-  timeout API / 60 s ACK cliente, JSON mode y validación estricta en approval.js.
-- `adventure:start {}`: solo host; fija orden y playing transaccionalmente.
-- `action:submit {id,turnVersion,text}`: ID UUID y texto hasta 2000 caracteres.
-  ACK inmediato tras persistencia; narración llega por room:state. Repetir mismo
-  ID/datos devuelve el resultado existente sin repetir API/mensaje/avance.
-  Un ID con datos distintos se rechaza; UNIQUE(room_code,turn_version) impide dos
-  acciones distintas del mismo turno, incluidas solicitudes concurrentes.
-- `action:retry {id}`: solo autor del turno actual para una acción failed.
-- `chat:history {before}`: página de hasta 100 mensajes anteriores al ID indicado,
-  ascendente. Snapshot incluye los 100 últimos; los anteriores permanecen en DB.
-- `room:leave {}`: jugador elimina su plaza solo en lobby; host borra sala completa.
-- Eventos de servidor: room:state, room:closed {reason}, session:replaced.
+- room:create {playerName,world}: storyName, premise, redLines, magicLevel,
+  adventureTone, mortality; claves exactas, sin ritmo configurable.
+- room:join {playerName,code}: solo lobby, código A-Z seis letras, 8 jugadores+host.
+- session:resume {token}: sesión y personaje propio sin traits; reemplaza conexión.
+- character:submit {name,history}: aprobación IA en lobby; estados persistidos.
+- adventure:start {}: solo host, al menos un jugador y todos conectados/aprobados.
+- action:submit {id,turnVersion,text}: UUID; texto 1..2000; idempotente por ID/datos.
+- action:retry {id}: solo autor actual, failed; respeta la etapa y tirada anterior.
+- roll:submit {id,turnVersion,resultados:[{caras,valor}],total}: claves exactas,
+  solo autor, configuración DB; ACK confirma guardado, no resolución completada.
+- chat:history {before}: páginas de 100 mensajes; historial durable.
+- room:leave {}: host borra todos, jugador elimina su plaza solo en lobby.
 
-Snapshot incluye world, phase, canStart, members públicos, turn {order,memberId,
-version,action} y messages públicos. No contiene historias, narrativa de aprobación,
-perks/defectos, token/hash ni conexión interna. Una conexión reemplaza la anterior.
-No se garantiza idempotencia de crear/unirse si se pierde su ACK; sigue pendiente.
+turn.action añade stage, pendingRoll y rollResults. pendingRoll es proyección
+pública de configuración: cd_final calculada, nombres de ajustes neutros.
+No contiene rasgos privados, historias, aprobación privada, token/hash ni socket_id.
+Host primero, luego jugadores por unión, avance circular solo tras commit final.
 
-## OpenAI y privacidad
+## Dados 3D, workers, CSP y GitHub Pages
 
-SDK openai 4.77.0; OPENAI_MODEL=gpt-4o-mini configurable. Facturación de API externa.
-Aprobación mantiene prompt y validación estricta v1.3 en approval.js.
-Narración: JSON exacto {narrativa:string}, 1..5000 caracteres, salida completa,
-validada antes del commit. Contexto limitado a los 20 últimos mensajes del snapshot;
-la DB conserva el historial completo, pero la IA puede olvidar hechos antiguos.
-Se envían mundo y texto de acciones/chat público a OpenAI; no tokens ni rasgos
-secretos. Aprobación sí envía la historia del propietario. No incluir datos sensibles.
-Tratamiento de entradas como datos y restricciones en prompts no garantizan
-moderación semántica ni resistencia absoluta a prompt injection. Revisión humana,
-moderación y resúmenes de memoria narrativa siguen pendientes.
-No hay atributos, CD, tiradas autorizadas ni combate formal: narración textual.
+public/main.js importa dice-ui.mjs relativo a su propio script. El módulo importa
+vendor/dice-box.js y calcula origen + pathname de vendor/dice-assets relativo a
+import.meta.url: admite https://usuario.github.io/repositorio/ sin rutas absolutas
+que borren /repositorio/. El build conserva árboles auxiliares de dist y assets.
+Workers y WASM son locales de mismo origen; no se descargan desde CDN en runtime.
+DiceBox usa tema default, WebGL y físicas de su librería; no hay fallback 2D que
+invente resultados. Si falla init/roll, se informa y la DB mantiene la espera.
 
-Límites: 8 jugadores + host, 1000 salas, 40 eventos/min por conexión, payload
-32 KiB, HTTP 180/min, handshakes 120/min/IP. IA: cuatro trabajos concurrentes,
-tres/min por miembro, diez/min por sala (aprobación y narración comparten cuotas
-persistentes). Un turno solo tiene una acción en curso. SDK sin reintentos automáticos.
-Un reintento tras fallo/reinicio puede generar otro coste: no hay exactly-once con
-el proveedor, aunque sí deduplicación y avance atómico en la DB local.
+Helmet autoriza worker-src self blob:, script-src self wasm-unsafe-eval y CDN
+Socket.io; mantiene restricciones restantes. offscreen=false evita depender de
+transferencia OffscreenCanvas; comprobar soporte real de navegadores.
+Hosting debe servir .js/.mjs con MIME JavaScript y .wasm application/wasm y no
+reescribir 404 de workers/assets a index.html. No habilitar COEP/COOP globales sin
+validar Socket.io/CDN y comportamiento real. Assets WASM y worker usan rutas
+locales; revisar consola y Network en aceptación para confirmar versión integrada.
 
-## Despliegue y aceptación
+Workflow Pages instala Node22/dependencias y build ANTES de publicar public/.
+Usa npm ci cuando exista lockfile real; npm install en primera entrega.
+El backend va aparte: HTTPS, volumen persistente, FRONTEND_ORIGINS con origen
+exacto de Pages (sin /repositorio). Configurar URL backend en Opciones.
+No se han probado Pages, CSP ni workers reales desde este entorno.
 
-Workflow Pages conservado; backend separado con HTTPS, volumen local persistente,
-NODE_ENV=production, FRONTEND_ORIGINS con orígenes HTTPS exactos.
-Configurar URL base HTTPS desde Opciones / Servidor. TRUST_PROXY_HOPS solo según
-proxy real. Helmet, allowlist y validación de Origin WebSocket se conservan.
-El frontend carga Socket.io desde CDN; requiere acceso a ese CDN.
+## Seguridad y límites
 
-`npm test` contiene esquema/recuperación con better-sqlite3 real y pruebas de
-Socket.io + DB reales con proveedor OpenAI simulado, sin coste de API. El mock
-solo está en test/mock-server.cjs y nunca se carga con npm start.
+La tirada física se genera en navegador, como pide este parche. Validar cantidades,
+caras y suma NO prueba azar honesto: cliente modificado puede elegir valores
+válidos. La configuración/veredicto/avance sí los controla el servidor. Antes de
+servicio competitivo, implementar azar servidor con animación vinculada o protocolo
+verificable; firmas sin origen confiable no resuelven este problema.
+No prometer “tirada autorizada/antitrampas” a partir de estos números cliente.
 
-Aceptación manual tras ejecutar check/test:
-1. Crear, unir, rechazar/aprobar con proveedor real; verificar secretos en red.
-2. Iniciar: host primero, input de otros bloqueado; servidor rechaza envío intruso.
-3. Enviar acción, esperar narrativa, comprobar avance circular exactamente una vez.
-4. Desconectar jugador actual: nadie puede saltarlo; reconectar con su token.
-5. Apagar/reiniciar backend usando misma DB: recuperar personajes, chat y turno.
-6. Interrumpir IA de acción: recuperar failed, reintentar mismo texto, un solo avance.
-7. Probar doble click/ACK perdido, claves erróneas, JSON inválido y cuotas.
-8. Revisar móvil, teclado, CORS/HTTPS, rendimiento y límites en entorno real.
+API timeout45s, sin auto retries; 4 trabajos IA, 3 llamadas/min miembro y 10/min sala,
+cuotas persistentes compartidas entre aprobación, evaluación y resolución. Turnos
+arriesgados usan dos llamadas y reintentos pueden alcanzar cuota: esperar un minuto
+sin cambiar resultados. 40 eventos/min conexión, 32KiB socket, 180 HTTP/min,
+120 handshakes/min/IP, 1000 salas. No hay exactly-once de facturación del proveedor.
+CORS, Origin WebSocket, Helmet, validación servidor y render textContent conservados.
+
+## Aceptación pendiente
+
+1. npm install/build, check y test; comprobar manifest local con workers y WASM.
+2. Host + jugador aprobado: trivial avanza una vez, riesgosa espera sin avanzar.
+3. Revisar CD/colores, secretos en red, dados 1d20+2d6 y resultados individuales.
+4. Recargar/reiniciar ANTES de tirar: mismo botón/configuración/turno.
+5. ACK perdido tras tirar: reenvío igual, datos distintos rechazados.
+6. Cortar segunda IA: retry conserva números, un solo mensaje final/avance.
+7. Probar JSON inválido, rasgo falso, intruso, caras/suma incorrectas y cuota agotada.
+8. Migrar copia de DB1.4, verificar FK/cascadas y backup/restore.
+9. Navegador real WebGL/worker/WASM, móvil/teclado, CSP, HTTPS y Pages /repositorio/.
+
+Entregables: ZIP completo fuente, Codigo_completo_v1.5.txt con TODOS los archivos
+textuales del proyecto (código, pruebas, config y docs históricos), Patch_Notes_v1.5.txt.
+El TXT no se incluye a sí mismo recursivamente; incluye manifiesto SHA-256 por archivo.

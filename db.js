@@ -10,7 +10,7 @@ function openDatabase(filename = process.env.SQLITE_PATH || path.join(__dirname,
   db.pragma('synchronous = FULL');
   db.pragma('busy_timeout = 5000');
   const version = db.pragma('user_version', { simple: true });
-  if (version > 1) throw new Error('Base de datos más reciente que este servidor');
+  if (version > 2) throw new Error('Base de datos más reciente que este servidor');
   if (version === 0) db.transaction(() => {
     db.exec(`
       CREATE TABLE rooms (
@@ -71,12 +71,22 @@ function openDatabase(filename = process.env.SQLITE_PATH || path.join(__dirname,
       PRAGMA user_version = 1;
     `);
   })();
+  if (db.pragma('user_version', { simple: true }) === 1) db.transaction(() => {
+    db.exec(`
+      ALTER TABLE actions ADD COLUMN stage TEXT NOT NULL DEFAULT 'evaluation'
+        CHECK(stage IN ('evaluation','awaiting_roll','resolution','done'));
+      ALTER TABLE actions ADD COLUMN pending_roll TEXT;
+      ALTER TABLE actions ADD COLUMN roll_results TEXT;
+      UPDATE actions SET stage='done' WHERE status='completed';
+      PRAGMA user_version = 2;
+    `);
+  })();
   return db;
 }
 function recover(db) {
   db.transaction(() => {
     db.prepare('UPDATE members SET socket_id=NULL, disconnected_at=?').run(Date.now());
-    db.exec("DELETE FROM traits WHERE member_id IN (SELECT member_id FROM characters WHERE status='evaluating'); UPDATE characters SET status='draft', narrative='' WHERE status='evaluating'; UPDATE members SET revision=revision+1; UPDATE actions SET status='failed' WHERE status='pending';");
+    db.exec("DELETE FROM traits WHERE member_id IN (SELECT member_id FROM characters WHERE status='evaluating'); UPDATE characters SET status='draft', narrative='' WHERE status='evaluating'; UPDATE members SET revision=revision+1; UPDATE actions SET status='failed' WHERE status='pending' AND stage!='awaiting_roll';");
   })();
 }
 module.exports = { openDatabase, recover };
