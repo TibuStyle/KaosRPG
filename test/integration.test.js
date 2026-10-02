@@ -20,7 +20,7 @@ function launch(port,file) {
   });
   const ready=new Promise((resolve,reject)=> {
     let log=''; const timeout=setTimeout(()=>{proc.kill();reject(new Error('Inicio agotado: '+log));},10000);
-    proc.stdout.on('data',buffer=> {log+=buffer; if(log.includes('Crónicas 1.4 escuchando')) {clearTimeout(timeout);resolve();}});
+    proc.stdout.on('data',buffer=> {log+=buffer; if(log.includes('Crónicas 1.5 escuchando')) {clearTimeout(timeout);resolve();}});
     proc.stderr.on('data',buffer=>{log+=buffer;});
     proc.once('exit',code=>{clearTimeout(timeout);reject(new Error('Servidor terminó: '+code+' '+log));});
   });
@@ -76,10 +76,37 @@ test('Socket real + SQLite + IA mock: autorización, idempotencia, espera offlin
     assert.equal(rp.data.room.messages.filter(m=>m.kind==='action').length,1);
     assert.equal(rp.data.room.messages.filter(m=>m.kind==='ai').length,1);
     assert.equal((await req(player2,'room:leave')).ok,false);
-    assert.equal((await req(player2,'action:submit',{id:crypto.randomUUID(),turnVersion:1,text:'Entro'})).ok,true);
-    await until(async()=>{const r=await req(host2,'session:resume',{token:h.token});return r.data?.room.turn.version===2;});
-    assert.equal((await req(host2,'room:leave')).ok,true);
-    assert.equal((await req(player2,'session:resume',{token:p.token})).ok,false);
+    const risk={id:crypto.randomUUID(),turnVersion:1,text:'ARRIESGADA'};
+    assert.equal((await req(player2,'action:submit',risk)).ok,true);
+    const waiting=await until(async()=>{const r=await req(player2,'session:resume',{token:p.token});return r.data?.room.turn.action?.stage==='awaiting_roll' && r.data;});
+    assert.equal(waiting.room.turn.version,1);
+    assert.equal(waiting.room.turn.action.pendingRoll.cd_final,12);
+    assert.ok(!JSON.stringify(waiting).includes('SECRETO_RASGO'));
+    const roll={id:risk.id,turnVersion:1,resultados:[{caras:20,valor:13},{caras:6,valor:2},{caras:6,valor:4}],total:19};
+    assert.equal((await req(host2,'roll:submit',roll)).ok,false);
+    assert.equal((await req(player2,'roll:submit',{...roll,total:200})).ok,false);
+    await stop(server.proc);server=launch(port,file);await server.ready;
+    const player3=await client(port),host3=await client(port);sockets.push(player3,host3);
+    const restored=await req(player3,'session:resume',{token:p.token});
+    await req(host3,'session:resume',{token:h.token});
+    assert.equal(restored.data.room.turn.action.stage,'awaiting_roll');
+    assert.deepEqual(restored.data.room.turn.action.pendingRoll,waiting.room.turn.action.pendingRoll);
+    assert.equal((await req(player3,'roll:submit',roll)).ok,true);
+    assert.equal((await req(player3,'roll:submit',roll)).ok,true);
+    assert.equal((await req(player3,'roll:submit',{...roll,total:20,resultados:[{caras:20,valor:14},{caras:6,valor:2},{caras:6,valor:4}]})).ok,false);
+    const failed=await until(async()=>{const r=await req(player3,'session:resume',{token:p.token});return r.data?.room.turn.action?.status==='failed' && r.data.room;});
+    assert.equal(failed.turn.version,1);assert.equal(failed.turn.action.stage,'resolution');
+    assert.deepEqual(failed.turn.action.rollResults,{resultados:roll.resultados,total:roll.total});
+    // Cuota agotada: ni el reintento fallido altera resultados ni consume avance.
+    assert.equal((await req(player3,'action:retry',{id:risk.id})).ok,false);
+    // Simular ventana de cuota vencida directamente en DB de test, sin bypass de producción.
+    const testDb=require('better-sqlite3')(file);
+    testDb.prepare('DELETE FROM rate_limits').run();testDb.close();
+    assert.equal((await req(player3,'action:retry',{id:risk.id})).ok,true);
+    await until(async()=>{const r=await req(host3,'session:resume',{token:h.token});return r.data?.room.turn.version===2;});
+    assert.equal((await req(player3,'roll:submit',roll)).ok,true); // completed idempotente
+    assert.equal((await req(host3,'room:leave')).ok,true);
+    assert.equal((await req(player3,'session:resume',{token:p.token})).ok,false);
   } finally {
     for(const s of sockets)s.disconnect();if(server)await stop(server.proc);
     fs.rmSync(dir,{recursive:true,force:true});

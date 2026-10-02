@@ -27,7 +27,7 @@ test('SQLite real: reinicio, rasgos, sesión hash, cola, chat y recuperación de
     db.prepare("INSERT INTO traits VALUES('jack','ventaja','Navegante')").run();
     db.prepare("INSERT INTO turn_order VALUES('ABCDEF',0,'host'),('ABCDEF',1,'jack')").run();
     db.prepare("UPDATE rooms SET phase='playing',turn_index=1,turn_version=3").run();
-    db.prepare("INSERT INTO actions VALUES('action','ABCDEF','jack',3,'Exploro','pending',0)").run();
+    db.prepare("INSERT INTO actions(id,room_code,member_id,turn_version,text,status,created_at) VALUES('action','ABCDEF','jack',3,'Exploro','pending',0)").run();
     db.prepare("INSERT INTO messages(room_code,author_name,kind,text,action_id,created_at) VALUES('ABCDEF','Jack','action','Exploro','action',0)").run();
     db.close(); db=openDatabase(file); recover(db);
     assert.equal(db.prepare('SELECT turn_version FROM rooms').get().turn_version,3);
@@ -38,7 +38,7 @@ test('SQLite real: reinicio, rasgos, sesión hash, cola, chat y recuperación de
     assert.equal(db.prepare('SELECT name FROM traits').get().name,'Navegante');
     assert.equal(db.prepare('SELECT member_id FROM sessions WHERE token_hash=?').get('hash-token').member_id,'jack');
     assert.equal(db.prepare('SELECT text FROM messages').get().text,'Exploro');
-    assert.throws(()=>db.prepare("INSERT INTO actions VALUES('duplicate','ABCDEF','jack',3,'Otra','pending',0)").run());
+    assert.throws(()=>db.prepare("INSERT INTO actions(id,room_code,member_id,turn_version,text,status,created_at) VALUES('duplicate','ABCDEF','jack',3,'Otra','pending',0)").run());
     assert.throws(()=>db.prepare("INSERT INTO turn_order VALUES('ABCDEF',2,'intruso')").run());
     db.prepare("DELETE FROM rooms WHERE code='ABCDEF'").run();
     for(const table of ['members','sessions','characters','traits','turn_order','actions','messages']) {
