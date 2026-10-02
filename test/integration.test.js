@@ -15,12 +15,12 @@ async function freePort() {
 }
 function launch(port,file) {
   const proc=spawn(process.execPath,[path.join(__dirname,'mock-server.cjs')],{
-    env:{...process.env,PORT:String(port),SQLITE_PATH:file,NODE_ENV:'development',GEMINI_API_KEY:'mock-only',
+    env:{...process.env,PORT:String(port),SQLITE_PATH:file,NODE_ENV:'development',POLLINATIONS_ENABLED:'false',GEMINI_API_KEY:'mock-only',
       FRONTEND_ORIGINS:`http://localhost:${port}`,TRUST_PROXY_HOPS:'0'},stdio:['ignore','pipe','pipe']
   });
   const ready=new Promise((resolve,reject)=> {
     let log=''; const timeout=setTimeout(()=>{proc.kill();reject(new Error('Inicio agotado: '+log));},10000);
-    proc.stdout.on('data',buffer=> {log+=buffer; if(log.includes('Crónicas 1.5 escuchando')) {clearTimeout(timeout);resolve();}});
+    proc.stdout.on('data',buffer=> {log+=buffer; if(log.includes('Crónicas 1.7 escuchando')) {clearTimeout(timeout);resolve();}});
     proc.stderr.on('data',buffer=>{log+=buffer;});
     proc.once('exit',code=>{clearTimeout(timeout);reject(new Error('Servidor terminó: '+code+' '+log));});
   });
@@ -49,7 +49,7 @@ test('Socket real + SQLite + IA mock: autorización, idempotencia, espera offlin
     const world={storyName:'Prueba',premise:'Ruinas',redLines:'',magicLevel:'none',adventureTone:'epic',mortality:'story'};
     const h=(await req(host,'room:create',{playerName:'Director',world})).data;
     const p=(await req(player,'room:join',{playerName:'Jack',code:h.room.code})).data;
-    const approved=await req(player,'character:submit',{name:'Jack',history:'SECRETO_HISTORIA'});
+    const approved=await req(player,'character:submit',{name:'Jack',history:'SECRETO_HISTORIA',publicConsent:true,portraitConsent:true,appearance:'Grey hair'});
     assert.equal(approved.ok,true);assert.equal(approved.data.character.status,'approved');
     assert.ok(!JSON.stringify(approved).includes('SECRETO_RASGO'));
     assert.equal((await req(player,'adventure:start')).ok,false);
@@ -105,6 +105,8 @@ test('Socket real + SQLite + IA mock: autorización, idempotencia, espera offlin
     assert.equal((await req(player3,'action:retry',{id:risk.id})).ok,true);
     await until(async()=>{const r=await req(host3,'session:resume',{token:h.token});return r.data?.room.turn.version===2;});
     assert.equal((await req(player3,'roll:submit',roll)).ok,true); // completed idempotente
+    const publicAfter=(await req(host3,'character:public',{memberId:p.memberId})).data.character;
+    assert.deepEqual(publicAfter.states,['Inspirado']);
     assert.equal((await req(host3,'room:leave')).ok,true);
     assert.equal((await req(player3,'session:resume',{token:p.token})).ok,false);
   } finally {

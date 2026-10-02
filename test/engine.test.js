@@ -23,7 +23,7 @@ test('SQLite real: reinicio, rasgos, sesión hash, cola, chat y recuperación de
     db.prepare("INSERT INTO members(id,room_code,name,is_host,joined_order,socket_id) VALUES('host','ABCDEF','Director',1,0,'connected')").run();
     db.prepare("INSERT INTO members(id,room_code,name,is_host,joined_order,socket_id) VALUES('jack','ABCDEF','Jack',0,1,'connected')").run();
     db.prepare("INSERT INTO sessions VALUES('hash-token','jack',0)").run();
-    db.prepare("INSERT INTO characters VALUES('jack','Jack','Marinero','approved','Bienvenido')").run();
+    db.prepare("INSERT INTO characters(member_id,name,history,status,narrative) VALUES('jack','Jack','Marinero','approved','Bienvenido')").run();
     db.prepare("INSERT INTO traits VALUES('jack','ventaja','Navegante')").run();
     db.prepare("INSERT INTO turn_order VALUES('ABCDEF',0,'host'),('ABCDEF',1,'jack')").run();
     db.prepare("UPDATE rooms SET phase='playing',turn_index=1,turn_version=3").run();

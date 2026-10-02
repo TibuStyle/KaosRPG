@@ -4,6 +4,7 @@ const assert=require('node:assert/strict');
 const {generateJSON,toGeminiSchema}=require('../gemini');
 const {APPROVAL_SCHEMA,MASTER_PROMPT,validateDecision}=require('../approval');
 const {EVALUATION_SCHEMA,RESOLUTION_SCHEMA,validateEvaluation}=require('../mechanics');
+const {CHARACTER_SCHEMA,FINAL_SCHEMA}=require('../social');
 function fake(text='{"narrativa":"Hecho."}',finishReason='STOP') {
   const calls=[];
   return {calls,getGenerativeModel(config) {
@@ -15,7 +16,7 @@ function fake(text='{"narrativa":"Hecho."}',finishReason='STOP') {
   }};
 }
 test('convierte todos los esquemas sin additionalProperties y preserva claves requeridas',()=> {
-  for(const schema of [APPROVAL_SCHEMA,EVALUATION_SCHEMA,RESOLUTION_SCHEMA]) {
+  for(const schema of [APPROVAL_SCHEMA,EVALUATION_SCHEMA,RESOLUTION_SCHEMA,CHARACTER_SCHEMA,FINAL_SCHEMA]) {
     const converted=toGeminiSchema(schema);
     assert.equal(converted.type,'OBJECT');
     assert.deepEqual(converted.required,schema.required);
