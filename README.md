@@ -1,65 +1,106 @@
-# Crónicas 1.7 — La Taberna
+# CRÓNICAS v1.8 — Forja del Director
 
-Proyecto fuente completo para Node >=22 y una única instancia con SQLite durable.
-El Director de Proyecto informa de despliegue funcional de 1.6 en Render; esta entrega no verifica ese despliegue ni certifica 1.7 en producción.
+Fuente actualizada desde el consolidado v1.7. Estado: **implementación no certificada en producción**.
+No se abrió ni verificó https://kaosrpg.onrender.com/; no hay navegador/herramienta web disponible.
+El feedback de funcionamiento v1.7 proviene del Director, no de una comprobación de esta entrega.
 
-## Instalación y despliegue
+## Arranque y actualización
 
-1. Detener la instancia y hacer backup consistente de SQLite (DB y WAL, o backup SQLite). Ensayar restore antes de actualizar.
-2. Instalar Node >=22 y ejecutar `npm install` en la raíz. El postinstall construye DiceBox local.
-3. Copiar `.env.example` a `.env` en local, o configurar secretos en Render.
-4. Configurar `GEMINI_API_KEY`, un `GEMINI_MODEL` disponible compatible con salida estructurada, `FRONTEND_ORIGINS` explícito y `SQLITE_PATH` en disco persistente, fuera de `public/`.
-5. Ejecutar `npm run check`, `npm test`, `npm start`. Generar y versionar un package-lock.json REAL; no se entrega un lockfile inventado.
-6. Render: Build Command `npm install`; Start Command `npm start`; Node 22 o superior; `NODE_ENV=production`. PORT lo proporciona Render. No usar varias instancias con una misma DB.
-7. `/health` debe responder version 1.7.0. Revisar manifiesto DiceBox, MIME WASM, CSP, workers/assets sin 404 y subruta Pages si se usa frontend separado.
+Requiere Node >=22. En un entorno con red:
 
-La migración automática `user_version 2 -> 3` agrega columnas de fichas, mochila, avatar y tablas de estados/chat social en transacción. Conserva personajes, acciones, tiradas y turnos. DB nueva recorre 0 ->1 ->2 ->3. No volver al servidor 1.6/1.5 después de migrar; restaurar backup compatible para rollback.
+```sh
+npm install
+npm run check
+npm test
+npm start
+```
 
-## Interfaz y funcionamiento
+`postinstall` genera los assets locales de DiceBox. Versiona el `package-lock.json` real que genere
+npm; no se ha inventado ni incluido un lockfile. No se incluyen node_modules ni binarios de terceros.
+Configura `.env` desde `.env.example`: `GEMINI_API_KEY`, un `GEMINI_MODEL` disponible elegido
+explícitamente, `FRONTEND_ORIGINS`, `SQLITE_PATH` y `POLLINATIONS_ENABLED` según el despliegue.
+El nombre de modelo heredado es un ejemplo, no una garantía de disponibilidad actual.
 
-- CSS nuevo: madera/pergamino de gradientes locales (sin imágenes o fuentes externas), serifas, botones tallados/metalizados, narrativa clara de alto contraste, adaptación móvil y movimiento reducido.
-- Apariencia Estética (máx. 1000 caracteres), puramente visual. Confirmaciones explícitas de publicación de historia y envío visual externo.
-- Al aprobar, Gemini traduce la apariencia al inglés y deriva SOLO equipo declarado en la historia; el backend solicita el retrato a `https://image.pollinations.ai/prompt/{prompt_codificado}`.
-- Estructura fija: `detailed pixel art character portrait, 2d game art, no weapons, [tono/reglas generales del mundo], [apariencia en inglés]`. No se envían premisa, líneas rojas, mochila o rasgos al endpoint de imagen deliberadamente. La traducción/depuración semántica depende de Gemini: revisar que no filtre historia/rasgos antes de aceptar.
-- Timeout de retrato 12s, máximo 8MiB y MIME PNG/JPEG/WebP, redirects rechazados. Éxito guarda URL en `characters.avatar_url`. Fallo deja avatar nulo/estado unavailable SIN cancelar la aprobación. `POLLINATIONS_ENABLED=false` desactiva el fetch.
-- El endpoint pedido se integra sin credenciales. Su acceso público/gratuidad actual NO se ha comprobado. Podría requerir autenticación, cambiar condiciones o redirigir; este parche no promete disponibilidad, coste cero ni migración silenciosa a otro endpoint. Si falla, no habrá retrato.
-- URL remota, no copia local de imagen: cargar miniatura/ficha vuelve a contactar Pollinations; no hay persistencia binaria, consistencia visual ni garantía de imagen sin armas. No reintentos automáticos. Personajes heredados no regeneran retrato: una nueva aprobación con consentimiento en lobby sí lo solicita.
-- Lista de jugadores con miniaturas; clic abre ficha modal: avatar, nombre, historia pública, equipo narrativo y estados.
-- Equipo público tipo ataque/defensa/otro, sin estadísticas ni sistema de combate nuevo. Máximo 12 objetos, nombres 80 caracteres. Personajes heredados conservan equipo vacío hasta nueva evaluación.
-- Historia aprobada nueva se publica. Historias heredadas se mantienen ocultas hasta pulsar `Publicar mi historia existente` con confirmación o reenviar personaje antes de jugar. El botón publica TODO el texto: no usar si contiene secretos.
-- Estados narrativos públicos (máximo 16 por personaje): Gemini puede poner/retirar hasta 12 etiquetas al resolver una tirada; validación de personajes de la sala y límites, commit junto con narrativa y avance. Un fallo no aplica cambios; retry conserva los resultados. Triviales mantienen su contrato y no modifican estados. Etiquetas no alteran CD ni conceden ventajas automáticas.
-- `Mochila (Privado)` aparece solo al abrir la ficha propia: registro editable, 30 objetos de 120 caracteres, sin duplicados. Servidor deriva dueño de sesión, nunca de un ID solicitado. No recibe objetos de Gemini ni se comunica a IA; no es economía autoritativa/antitrampas.
-- La Taberna: chat social global y susurros independiente; lateral en pantallas amplias, debajo en móvil. Funciona en lobby y partida. Clic en nombre de mensaje selecciona susurro; selector permite iniciar conversación con cualquier otro miembro, incluido Director.
-- Historial SQLite paginado (100), recepción selectiva de susurros, límite 20 mensajes/minuto/miembro y límite de transporte existente 40 solicitudes/minuto. Persistencia e idempotencia por client UUID. Destinatario desconectado recibe historial al reconectar.
+Render: build `npm install`, start `npm start`, **una sola instancia**, HTTPS, SQLite en disco
+persistente FUERA de `public`. Guarda los secretos en Render, nunca en el repositorio.
+`/health` devuelve versión `1.8.0`. Frontend Pages conserva workflow y rutas relativas.
+Consulta `README_v1.7.md` y `README_v1.6.md` para detalles heredados de DiceBox/Workers/WASM.
 
-## Privacidad y límites
+### Migración
 
-Gemini usa SOLO historial narrativo en `messages`, no `social_messages`, ni `inventory`. Mochila no está en snapshot ni ficha pública. Susurros se entregan al remitente/destinatario autenticados, no al host por privilegio. Excepción obvia: lo que una persona copie manualmente a su acción ya forma parte de narrativa/IA. Chat no avanza turno ni llama a IA.
+Haz un backup consistente antes de arrancar y ensaya restore. El servidor ejecuta las migraciones
+heredadas y v3→v4 transaccional. Añade `members.is_npc` y
+`characters.motivo_rechazo_narrativo`. Conserva acciones, tiradas, cola, sesiones y mochila.
+Los rechazos heredados copian `narrative` al nuevo motivo. **No uses v1.7 con una DB v4**;
+para volver atrás restaura un backup compatible. No se modifica tu servidor desde esta entrega.
 
-Privacidad respecto al grupo, no cifrado de extremo a extremo: operador del servidor tiene acceso a SQLite. No poner secretos personales. El prompt visual queda en URL y puede ser registrado por proveedor. Historias públicas, etiquetas y equipo pueden filtrar secretos si el usuario o Gemini los escribe; no se certifica privacidad semántica. Rasgos siguen ocultos; etiquetas con nombres literales de rasgos se rechazan.
+## Novedades
 
-Se mantienen cola fija Director primero, turno no saltable por desconexión, SQLite durable, resultados de dados CLIENTE manipulables y reglas matemáticas 1.5. Nada de autenticación de cuentas, azar servidor, HP, combate formal, mapas, memoria extensa, moderación garantizada o multiinstancia en este parche.
+- UI sin fondo cuadriculado: bóveda oscura azul/pizarra, luz cálida, pergamino envejecido,
+  contenedores de 4px y botones metálicos. Todo con CSS local, sin assets externos nuevos.
+- Economía de Rasgos en aprobación: ventajas extremas requieren defectos críticos explícitos
+  y relevantes. El balance no levanta prohibiciones del lore ni líneas rojas. Es un criterio
+  SEMÁNTICO de Gemini, no un balance numérico demostrado ni un sistema de puntos.
+- `motivo_rechazo_narrativo` obligatorio y no vacío en rechazos; vacío en aprobación.
+  Se persiste y se muestra como «Rechazado: …» en alerta accesible; fallos del proveedor
+  siguen siendo errores técnicos, no rechazos.
+- Host: **Borrar Sala**, confirmando su código, elimina la campaña y revoca sesiones.
+  «Cerrar sala para todos» conserva su comportamiento destructivo anterior.
+- Host: **Añadir NPC** con nombre/historia públicos; máximo 12 por sala. Sin aprobación IA,
+  retrato, rasgos ni equipo inferidos. Se puede iniciar con Host + NPC(s), sin humanos.
+  Los NPCs no consumen las 8 plazas de jugadores humanos. En partida se añaden al final
+  de la cola conservando participante actual y versión. NPCs no tienen token/socket propio.
+  Solo el Host escribe sus acciones, tira y reintenta cuando les toca. Las acciones se
+  evalúan y resuelven con Gemini igual que las demás; no se salta la cola.
+- **Generar premisa** reemplaza Random: llamada backend Gemini antes de crear sala,
+  3 o 4 párrafos, máximo 2000 caracteres, teniendo en cuenta las reglas seleccionadas.
+  Confirma el envío externo; si falla o editas mientras genera, no sobrescribe el texto.
+  Sin fallback fijo ni retry automático. Timeout del proveedor 45s, ACK frontend 60s.
 
-## Contratos y eventos nuevos
+## API Socket.io nueva / ampliada
 
-- Aprobación: claves anteriores + `descripcion_visual_ingles`, `equipo_publico`, `inventario_privado` (obligatoriamente vacío; administración privada manual).
-- Resolución de tirada: `{narrativa, estados:[{member_id,operacion:'poner'|'retirar',etiqueta}]}`.
-- `character:public {memberId}` => ficha aprobada de la misma sala (o null).
-- `character:publish-history {}` => publica historia propia aprobada.
-- `inventory:get {}` / `inventory:save {items}` => solo dueño de sesión.
-- `social:history {before?}` / `social:send {id,kind:'global'|'whisper',recipientId:null|id,text}`.
-- Recepción `social:message`; no se reutiliza `chat:history` (reservado a narrativa histórica).
+Los eventos usan el ACK heredado `{ok,data}` o `{ok:false,error}`.
 
-## Pruebas / aceptación obligatoria
+- `premise:generate` → `{world}` con las seis claves del contrato de sala; responde `{premise}`.
+  Solo antes de tener sesión. Hasta 3 peticiones/minuto por dirección de conexión y
+  10/minuto globales, contando fallos. Máximo 4 trabajos IA simultáneos compartidos con motor.
+  Detrás de proxy la IP de conexión puede ser compartida: el límite es conservador;
+  no confía en X-Forwarded-For sin una infraestructura verificada. Esta API es pública,
+  puede consumir cuota; no sustituye autenticación, captcha ni un límite de gasto del proveedor.
+- `room:wipe` → `{confirmCode}`. Servidor verifica Host autenticado y código de SU sala.
+- `npc:add` → `{name,history}`. Solo Host. Nombre 1–60, historia 1–6000 caracteres.
+- `action:submit`, `action:retry`, `roll:submit`: admiten `memberId` opcional para el NPC.
+  Se permite el propio miembro o un NPC de la misma sala controlado por el Host;
+  jamás otro jugador humano. El presupuesto de IA se carga al Host, no por cada NPC.
+- Snapshot público incorpora `isNPC`. La conexión de un NPC refleja la conexión del Host.
+  NPCs no son destinatarios de susurros; mochila/chat conservan aislamiento y privacidad.
 
-Ver `Verification_v1.7.txt`. Aquí se ejecutaron comprobaciones Python SQLite y referencias estáticas; NO Node/npm, build, Socket runtime, navegador ni servicios reales. Tests de Node nuevos/adaptados están entregados, NO aprobados.
+## Borrado: alcance y precauciones
 
-En entorno con Node:
-- `npm run check` y `npm test`; revisar pruebas de contratos, privacidad SQL, Socket real con Gemini mock, idempotencia, reinicio, retratos con fetch simulado y estados tras retry.
-- Gemini real: aprobación/rechazo, traducción estética, equipo explícito, tirada/resolución con poner y retirar etiquetas; cancelar/reiniciar sin commit parcial.
-- Pollinations real: MIME, timeout, endpoint vigente, imagen disponible/no disponible, URL codificada, ausencia de armas/datos sensibles, políticas y términos. CSP deja únicamente origen de imagen solicitado; redirects no están permitidos deliberadamente.
-- Dos jugadores + host + otra sala: susurros invisibles a terceros en eventos, historial, snapshot y reconexión. Mochila distinta en cada dueño y ausente en contexto IA.
-- Tab/Shift-Tab/Escape y lectores de pantalla en modales, cierre y limpieza privada; móvil, contraste, navegador/WebGL; Render HTTPS; subruta Pages.
-- Backup/restore, disco lleno, carga y límites antes de producción.
+El borrado de sala y datos relacionados es atómico vía cascadas FK: miembros, personajes,
+rasgos, estados, sesiones, turnos, acciones, resultados, historial narrativo y chat humano.
+También elimina contadores de sala/miembro/chat de campaña y aborta lógicamente trabajos IA.
+Emite `room:closed`, expulsa sockets del canal y limpia tokens activos; los sockets pueden
+seguir conectados al transporte para crear otra sala. No borra otras campañas ni backups.
+**No es borrado forense** del disco/WAL/backups ni elimina datos ya enviados a proveedores.
+Cancelar un trabajo no garantiza anular la facturación externa. No hay recuperación desde la UI.
 
-ZIP sin .env real, DB, node_modules o binarios de terceros. TXT consolidado contiene todos los archivos textuales del ZIP salvo él mismo, con separadores y SHA-256.
+## Verificación y aceptación
+
+Ver `Verification_v1.8.txt`. Se ejecutó SQL real extraído con SQLite Python y checks estáticos.
+**No se ejecutaron Node/npm, tests JavaScript, build, navegador, Socket runtime ni APIs reales.**
+Los tests entregados son código de pruebas, NO resultados aprobados. El mock Gemini es solo
+para tests; el bypass NPC es autorización Host explícita, no un bypass de jugadores.
+
+Antes de producción: ejecutar check/tests/build; ensayar migración/backup/restore; validar
+premisas 3–4 párrafos y rechazos con Gemini real; Host/NPC con tiradas, retry, desconexión,
+reinicio e idempotencia; wipe con clientes de otras salas y trabajos activos; teclado/móvil,
+contraste visual, retratos, dados 3D, Pages subruta, Render HTTPS y persistencia de disco.
+
+## Limitaciones conservadas
+
+Cola estricta sin saltos, dados cliente manipulables, sin cuentas/HP/combate formal,
+moderación garantizada, economía antitrampas ni privacidad semántica certificada.
+Chat sin E2EE: el operador puede leer DB. No TTL automático. Gemini puede equivocarse
+sobre lore/balance o líneas rojas; el Director debe revisar. Pollinations permanece sin
+verificación en vivo de disponibilidad, autenticación, condiciones ni calidad visual.

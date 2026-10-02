@@ -89,3 +89,4 @@ v1.7 — Taberna, apariencia/retrato, fichas, mochila, estados y chat humano sep
 v1.6 — Gemini y bugfix de construcción DiceBox (notas originales conservadas).
 v1.5 — Tiradas dinámicas y espera/resolución durable.
 v1.4 — SQLite y cola estricta persistente.
+

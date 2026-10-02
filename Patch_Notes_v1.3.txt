@@ -172,3 +172,4 @@ v1.3 — DM de aprobación IA, rasgos ocultos y vista temporal de inicio.
 v1.2 — estructura GitHub, backend, salas reales y personajes en RAM.
 v1.1 — configuración local del host y Random fijo sin IA.
 v1.0 — estructura inicial Inicio/Lobby.
+

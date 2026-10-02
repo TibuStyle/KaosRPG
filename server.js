@@ -11,6 +11,7 @@ const { Server } = require('socket.io');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { generateJSON } = require('./gemini');
 const {createPortrait}=require('./portraits');
+const {PREMISE_SCHEMA,PREMISE_PROMPT,validatePremise,controlledMember}=require('./campaign');
 const {CHARACTER_SCHEMA,CHARACTER_PROMPT,validateCharacter,validateInventory,
   FINAL_SCHEMA,FINAL_PROMPT,validateFinal,publicSheet,socialHistory,validateChat}=require('./social');
 
@@ -43,7 +44,7 @@ app.use(helmet({
 const allowed = origin => !origin || origins.has(origin);
 app.use(cors({ origin(origin, callback) { callback(null, allowed(origin)); } }));
 app.use(rateLimit({ windowMs: 60000, limit: 180, standardHeaders: 'draft-7', legacyHeaders: false }));
-app.get('/health', (_req, res) => res.json({ ok: true, version: '1.7.0' }));
+app.get('/health', (_req, res) => res.json({ ok: true, version: '1.8.0' }));
 app.use(express.static(path.join(__dirname, 'public')));
 const server = http.createServer(app);
 const handshakes = new Map();
@@ -106,7 +107,7 @@ function members(code) {
 }
 function canStart(room) {
   const players = members(room.code).filter(m => !m.is_host);
-  return room.phase === 'lobby' && players.length > 0 && players.every(m => m.socket_id && m.character_status === 'approved');
+  return room.phase === 'lobby' && players.length > 0 && players.every(m => (m.is_npc || m.socket_id) && m.character_status === 'approved');
 }
 function turn(room) {
   const order = all('SELECT member_id FROM turn_order WHERE room_code=? ORDER BY position',room.code).map(x=>x.member_id);
@@ -122,8 +123,9 @@ function messages(code, before) {
     WHERE room_code=? AND id<? ORDER BY id DESC LIMIT 100`,code,before || Number.MAX_SAFE_INTEGER).reverse();
 }
 function snapshot(room) {
+  const list=members(room.code),host=list.find(m=>m.is_host);
   return { code:room.code,world:config(room),phase:room.phase,canStart:canStart(room),
-    members:members(room.code).map(m=>({id:m.id,name:m.name,isHost:Boolean(m.is_host),connected:Boolean(m.socket_id),
+    members:list.map(m=>({id:m.id,name:m.name,isHost:Boolean(m.is_host),isNPC:Boolean(m.is_npc),connected:Boolean(m.is_npc ? host?.socket_id : m.socket_id),
       ready:m.character_status==='approved',characterStatus:m.character_status||'draft',characterName:m.character_name||null,avatarUrl:m.character_status==='approved'?m.avatar_url:null})),
     turn:turn(room),messages:messages(room.code) };
 }
@@ -135,7 +137,7 @@ function current(socket) {
   const room=one('SELECT * FROM rooms WHERE code=?',member.room_code);
   if(!room) fail('La sala no existe.'); return {room,member};
 }
-function privateCharacter(id) { return one('SELECT name,history,status,narrative,appearance,avatar_url AS avatarUrl,avatar_status AS avatarStatus FROM characters WHERE member_id=?',id)||null; }
+function privateCharacter(id) { return one('SELECT name,history,status,narrative,motivo_rechazo_narrativo,appearance,avatar_url AS avatarUrl,avatar_status AS avatarStatus FROM characters WHERE member_id=?',id)||null; }
 function publicSheets(code) {return members(code).map(m=>publicSheet(db,m.id)).filter(Boolean);}
 function aiSheets(code) {return publicSheets(code).map(({memberId,name,history,equipment,states})=>({memberId,name,history,equipment,states}));}
 function notifyMember(id,event,data) {
@@ -170,7 +172,7 @@ function closeRoom(room) {
   for(const a of all("SELECT id FROM actions WHERE room_code=? AND status='pending'",room.code)) jobs.get('action:'+a.id)?.abort();
   const connected=members(room.code).map(m=>m.socket_id);
   db.transaction(()=> {
-    for(const m of members(room.code)) run('DELETE FROM rate_limits WHERE key=?','member:'+m.id);
+    for(const m of members(room.code)) { run('DELETE FROM rate_limits WHERE key=?','member:'+m.id); run('DELETE FROM rate_limits WHERE key=?','social:'+m.id); }
     run('DELETE FROM rate_limits WHERE key=?','room:'+room.code);
     run('DELETE FROM rooms WHERE code=?',room.code);
   })();
@@ -215,7 +217,7 @@ async function evaluateCharacter(room,member,draft) {
     const portrait=result.aprobado ? await createPortrait(room,result.visual,{signal:controller.signal}) : {url:null,status:'pending'};
     db.transaction(()=> {
       if(!valid()||stopping||controller.signal.aborted) fail('Evaluación cancelada.');
-      run('UPDATE characters SET status=?,narrative=? WHERE member_id=?',result.aprobado?'approved':'rejected',result.mensaje_narrativo,member.id);
+      run('UPDATE characters SET status=?,narrative=?,motivo_rechazo_narrativo=? WHERE member_id=?',result.aprobado?'approved':'rejected',result.mensaje_narrativo,result.motivo_rechazo_narrativo,member.id);
       run('UPDATE characters SET public_history=?,equipment=?,avatar_url=?,avatar_status=? WHERE member_id=?',
         result.aprobado?draft.history:'',JSON.stringify(result.aprobado?result.equipment:[]),portrait.url,portrait.status,member.id);
       if(result.aprobado) for(const trait of [...result.perks,...result.defectos]) run('INSERT INTO traits VALUES(?,?,?)',member.id,trait.tipo,trait.nombre);
@@ -224,7 +226,7 @@ async function evaluateCharacter(room,member,draft) {
   } catch(error) {
     if(valid()) db.transaction(()=> {
       const unchanged=previous && previous.name===draft.name && previous.history===draft.history && previous.appearance===draft.appearance;
-      run('UPDATE characters SET status=?,narrative=? WHERE member_id=?',unchanged?previous.status:'draft',unchanged?previous.narrative:'',member.id);
+      run('UPDATE characters SET status=?,narrative=?,motivo_rechazo_narrativo=? WHERE member_id=?',unchanged?previous.status:'draft',unchanged?previous.narrative:'',unchanged?previous.motivo_rechazo_narrativo:'',member.id);
       run('DELETE FROM traits WHERE member_id=?',member.id);
       if(unchanged) for(const t of traits) run('INSERT INTO traits VALUES(?,?,?)',member.id,t.kind,t.name);
     })();
@@ -310,6 +312,53 @@ io.on('connection',socket=> {
       }
     });
   }
+  handle('premise:generate',async payload=> {
+    unused(socket);
+    const w=world(payload?.world);
+    if(!ai) fail('IA no configurada. Añade GEMINI_API_KEY al backend.');
+    if(jobs.size>=4) fail('El DM está ocupado. Reintenta más tarde.');
+    const key='premise:'+socket.id,rateKey='premise-ip:'+hash(socket.handshake.address||'unknown');
+    if(jobs.has(key))fail('Ya se está generando una premisa.');
+    const now=Date.now(),entry=one('SELECT * FROM rate_limits WHERE key=?',rateKey);
+    const global=one("SELECT * FROM rate_limits WHERE key='premise-global'");
+    if(entry&&now-entry.start<60000&&entry.count>=3 || global&&now-global.start<60000&&global.count>=10)fail('Límite de premisas alcanzado. Espera un minuto.');
+    for(const k of [rateKey,'premise-global']) {
+      const e=one('SELECT * FROM rate_limits WHERE key=?',k);
+      run('INSERT OR REPLACE INTO rate_limits VALUES(?,?,?)',k,e&&now-e.start<60000?e.start:now,e&&now-e.start<60000?e.count+1:1);
+    }
+    const controller=new AbortController();jobs.set(key,controller);
+    try {
+      const premise=validatePremise(await jsonCompletion(PREMISE_PROMPT,{mundo:w},controller,1600,PREMISE_SCHEMA));
+      if(!socket.connected||controller.signal.aborted||stopping)fail('Generación cancelada.');
+      return {premise};
+    } catch(error) {fail('No se pudo generar la premisa. El texto anterior se conserva; reintenta explícitamente.');}
+    finally {if(jobs.get(key)===controller)jobs.delete(key);}
+  });
+  handle('room:wipe',payload=> {
+    const {room,member}=current(socket);
+    if(!member.is_host)fail('Solo el anfitrión puede borrar la sala.');
+    if(payload?.confirmCode!==room.code)fail('Escribe el código de sala para confirmar el borrado.');
+    closeRoom(room);return {};
+  });
+  handle('npc:add',payload=> {
+    const {room,member}=current(socket);
+    if(!member.is_host)fail('Solo el anfitrión puede añadir NPCs.');
+    const name=text(payload?.name,1,60,'NPC'),history=text(payload?.history,1,6000,'Historia NPC');
+    const id=crypto.randomUUID();
+    db.transaction(()=> {
+      const r=one('SELECT * FROM rooms WHERE code=?',room.code);
+      if(one('SELECT COUNT(*) AS n FROM members WHERE room_code=? AND is_npc=1',r.code).n>=12)fail('Máximo 12 NPCs por sala.');
+      const pos=one('SELECT COALESCE(MAX(joined_order),-1)+1 AS n FROM members WHERE room_code=?',r.code).n;
+      run('INSERT INTO members(id,room_code,name,is_host,joined_order,is_npc) VALUES(?,?,?,0,?,1)',id,r.code,name,pos);
+      run("INSERT INTO characters(member_id,name,history,status,narrative,public_history,avatar_status) VALUES(?,?,?,'approved','NPC creado por el Director',?,'unavailable')",id,name,history,history);
+      if(r.phase==='playing') {
+        const count=one('SELECT COUNT(*) AS n FROM turn_order WHERE room_code=?',r.code).n;
+        // Conservar el participante actual aunque el índice absoluto tenga vueltas anteriores.
+        run('UPDATE rooms SET turn_index=? WHERE code=?',r.turn_index%count,r.code);
+        run('INSERT INTO turn_order VALUES(?,?,?)',r.code,count,id);
+      }
+    })();broadcast(room.code);return {memberId:id};
+  });
   handle('room:create',payload=> {
     unused(socket); const w=world(payload?.world),name=text(payload?.playerName,1,40,'Host');
     const result=db.transaction(()=> {
@@ -326,7 +375,7 @@ io.on('connection',socket=> {
     const data=db.transaction(()=> {
       const room=one('SELECT * FROM rooms WHERE code=?',code); if(!room) fail('La sala no existe.');
       if(room.phase!=='lobby') fail('La partida ya ha empezado.');
-      if(one('SELECT COUNT(*) AS n FROM members WHERE room_code=?',code).n>=9) fail('Sala llena.');
+      if(one('SELECT COUNT(*) AS n FROM members WHERE room_code=? AND is_npc=0',code).n>=9) fail('Sala llena.');
       return insertMember(socket,code,name,false);
     })(); return attach(socket,data,code);
   });
@@ -335,7 +384,7 @@ io.on('connection',socket=> {
     const tokenHash=hash(token);
     if(socket.data.tokenHash && socket.data.tokenHash!==tokenHash) fail('Ya tienes otra sesión activa.');
     const m=one('SELECT m.* FROM members m JOIN sessions s ON s.member_id=m.id WHERE s.token_hash=?',tokenHash);
-    if(!m) fail('Sesión inválida o sala cerrada.');
+    if(!m||m.is_npc) fail('Sesión inválida o sala cerrada.');
     const old=io.sockets.sockets.get(m.socket_id);
     run('UPDATE members SET socket_id=?,disconnected_at=NULL WHERE id=?',socket.id,m.id);
     if(old && old.id!==socket.id) { old.emit('session:replaced'); old.disconnect(true); }
@@ -395,7 +444,7 @@ io.on('connection',socket=> {
   handle('social:send',payload=> {
     const {room,member}=current(socket);const value=validateChat(payload);
     const recipient=value.kind==='whisper'?one('SELECT * FROM members WHERE id=? AND room_code=?',value.recipientId,room.code):null;
-    if(value.kind==='whisper'&&(!recipient||recipient.id===member.id))fail('Elige otro participante de tu sala.');
+    if(value.kind==='whisper'&&(!recipient||recipient.is_npc||recipient.id===member.id))fail('Elige otro participante de tu sala.');
     const saved=db.transaction(()=> {
       const prior=one('SELECT * FROM social_messages WHERE room_code=? AND sender_id=? AND client_id=?',room.code,member.id,value.id);
       if(prior) {
@@ -417,7 +466,8 @@ io.on('connection',socket=> {
     return {message};
   });
   handle('action:submit',payload=> {
-    const {room,member}=current(socket);
+    const {room,member:actor}=current(socket);
+    const member=controlledMember(db,room,actor,payload?.memberId);
     const id=payload?.id,version=payload?.turnVersion;
     if(typeof id!=='string'||!/^[a-f0-9-]{36}$/.test(id)||!Number.isSafeInteger(version)||version<0) fail('Solicitud de acción inválida.');
     const actionText=text(payload?.text,1,2000,'Acción');
@@ -432,7 +482,7 @@ io.on('connection',socket=> {
       if(r.phase!=='playing') fail('La aventura no ha comenzado.');
       if(r.turn_version!==version||turn(r).memberId!==member.id) fail('No es tu turno o tu vista está desactualizada.');
       if(turn(r).action) fail('Tu acción ya está registrada; reintenta su narración si falló.');
-      budget(member,r);
+      budget(actor,r);
       run("INSERT INTO actions(id,room_code,member_id,turn_version,text,status,created_at) VALUES(?,?,?,?,?,'pending',?)",id,r.code,member.id,version,actionText,Date.now());
       run("INSERT INTO messages(room_code,author_id,author_name,kind,text,action_id,created_at) VALUES(?,?,?,'action',?,?,?)",r.code,member.id,member.name,actionText,id,Date.now());
       launch=true; return {id,status:'pending'};
@@ -441,7 +491,8 @@ io.on('connection',socket=> {
     return result;
   });
   handle('action:retry',payload=> {
-    const {room,member}=current(socket);
+    const {room,member:actor}=current(socket);
+    const member=controlledMember(db,room,actor,payload?.memberId);
     const id=payload?.id;
     if(typeof id!=='string') fail('Acción inválida.');
     db.transaction(()=> {
@@ -449,13 +500,14 @@ io.on('connection',socket=> {
       if(!a||a.room_code!==r.code||a.member_id!==member.id||a.turn_version!==r.turn_version||turn(r).memberId!==member.id) fail('No puedes reintentar esta acción.');
       if(a.status!=='failed') fail('La acción no está pendiente de reintento.');
       if(jobs.has('action:'+id)) fail('La solicitud anterior está terminando.');
-      budget(member,r); run("UPDATE actions SET status='pending' WHERE id=?",id);
+      budget(actor,r); run("UPDATE actions SET status='pending' WHERE id=?",id);
     })(); broadcast(room.code); void processAction(id); return {id,status:'pending'};
   });
   handle('roll:submit',payload=> {
-    const {room,member}=current(socket);
+    const {room,member:actor}=current(socket);
+    const member=controlledMember(db,room,actor,payload?.memberId);
     const id=payload?.id,version=payload?.turnVersion;
-    if(!payload||Object.keys(payload).length!==4||typeof id!=='string'||!Number.isSafeInteger(version)) fail('Solicitud de tirada inválida.');
+    if(!payload||Object.keys(payload).length!==(Object.hasOwn(payload,'memberId')?5:4)||typeof id!=='string'||!Number.isSafeInteger(version)) fail('Solicitud de tirada inválida.');
     let launch=false;
     const result=db.transaction(()=> {
       const r=one('SELECT * FROM rooms WHERE code=?',room.code),a=one('SELECT * FROM actions WHERE id=?',id);
@@ -468,7 +520,7 @@ io.on('connection',socket=> {
       }
       if(r.phase!=='playing'||r.turn_version!==version||turn(r).memberId!==member.id||a.stage!=='awaiting_roll'||a.status!=='pending') fail('No se espera una tirada tuya.');
       if(jobs.has('action:'+id)) fail('La evaluación anterior está terminando.');
-      budget(member,r);
+      budget(actor,r);
       run("UPDATE actions SET stage='resolution',roll_results=? WHERE id=?",serialized,id);
       launch=true;
       return {id,status:'pending',stage:'resolution'};
@@ -493,6 +545,7 @@ io.on('connection',socket=> {
     socket.leave(room.code); delete socket.data.tokenHash; broadcast(room.code); return {};
   });
   socket.on('disconnect',()=> {
+    jobs.get('premise:'+socket.id)?.abort();
     const m=socket.data.tokenHash && one('SELECT m.* FROM members m JOIN sessions s ON s.member_id=m.id WHERE s.token_hash=?',socket.data.tokenHash);
     if(m && m.socket_id===socket.id) {
       run('UPDATE members SET socket_id=NULL,disconnected_at=? WHERE id=?',Date.now(),m.id); broadcast(m.room_code);
@@ -505,7 +558,7 @@ const maintenance=setInterval(()=> {
   run('DELETE FROM rate_limits WHERE start<?',now-60000);
 },30000);
 maintenance.unref();
-server.listen(PORT,()=>console.log(`Crónicas 1.7 escuchando en puerto ${PORT}; SQLite persistente`));
+server.listen(PORT,()=>console.log(`Crónicas 1.8 escuchando en puerto ${PORT}; SQLite persistente`));
 function shutdown() {
   if(stopping) return; stopping=true; clearInterval(maintenance);
   for(const controller of jobs.values()) controller.abort();
@@ -514,3 +567,4 @@ function shutdown() {
   setTimeout(()=>process.exit(1),10000).unref();
 }
 process.once('SIGTERM',shutdown); process.once('SIGINT',shutdown);
+

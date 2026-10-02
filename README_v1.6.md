@@ -218,3 +218,4 @@ Network sin 404 para JS, tema, modelos y WASM, tanto Render como Pages con subru
 Hacer una aprobación real y una acción trivial/arriesgada con Gemini; confirmar
 recuperación tras error, rechazo JSON incorrecto y conservación de rasgos SQLite.
 Cancelar un trabajo descarta su resultado; no garantiza cancelar la facturación.
+

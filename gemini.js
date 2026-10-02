@@ -47,3 +47,4 @@ async function generateJSON(ai,modelName,prompt,data,controller,maxTokens,schema
   }
 }
 module.exports={toGeminiSchema,generateJSON};
+

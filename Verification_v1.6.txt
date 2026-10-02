@@ -28,3 +28,4 @@ NO EJECUTADO / SIN CERTIFICAR
 Sin secretos ni DB reales. Historial de notas normalizado para anonimizar
 proveedor previo; los prompts fuente no se modificaron. Cancelación lógica no
 promete cancelar facturación. Validación de dados cliente no certifica azar.
+

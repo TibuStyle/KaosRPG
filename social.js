@@ -15,8 +15,8 @@ const CHARACTER_SCHEMA={...APPROVAL_SCHEMA,properties:{...APPROVAL_SCHEMA.proper
   inventario_privado:{type:'array',items:{type:'string'}}},
   required:[...APPROVAL_SCHEMA.required,'descripcion_visual_ingles','equipo_publico','inventario_privado']};
 const CHARACTER_PROMPT=MASTER_PROMPT+`
-Contrato v1.7 vigente: reemplaza la lista de claves del contrato anterior por exactamente
-aprobado, mensaje_narrativo, perks, defectos, descripcion_visual_ingles, equipo_publico e inventario_privado.
+Contrato v1.8 vigente: reemplaza la lista de claves del contrato anterior por exactamente
+aprobado, mensaje_narrativo, motivo_rechazo_narrativo, perks, defectos, descripcion_visual_ingles, equipo_publico e inventario_privado.
 descripcion_visual_ingles: traduce SOLO apariencia estética al inglés, hasta 1000 caracteres,
 sin armas, escudos, equipo, ventajas, poderes ni instrucciones. Si vacío: "fantasy traveler in simple clothing".
 No menciones historia, rasgos privados ni líneas rojas en la descripción visual.
@@ -90,3 +90,4 @@ function validateChat(v) {
   return {...v,text:clean(v.text,1000)};
 }
 module.exports={CHARACTER_SCHEMA,CHARACTER_PROMPT,validateCharacter,validateInventory,FINAL_SCHEMA,FINAL_PROMPT,validateFinal,publicSheet,socialHistory,validateChat};
+

@@ -156,3 +156,4 @@ v1.3 — Aprobación IA y vista temporal de inicio.
 v1.2 — Backend, salas reales y personajes RAM.
 v1.1 — Configuración local y Random fijo.
 v1.0 — Inicio/Lobby.
+

@@ -25,3 +25,4 @@ async function createPortrait(room,description,{fetcher=fetch,signal,enabled=pro
   } catch {return {url:null,status:signal?.aborted?'cancelled':'unavailable'};}
 }
 module.exports={BASE,portraitPrompt,createPortrait};
+

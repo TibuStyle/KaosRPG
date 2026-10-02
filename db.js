@@ -10,7 +10,7 @@ function openDatabase(filename = process.env.SQLITE_PATH || path.join(__dirname,
   db.pragma('synchronous = FULL');
   db.pragma('busy_timeout = 5000');
   const version = db.pragma('user_version', { simple: true });
-  if (version > 3) throw new Error('Base de datos más reciente que este servidor');
+  if (version > 4) throw new Error('Base de datos más reciente que este servidor');
   if (version === 0) db.transaction(() => {
     db.exec(`
       CREATE TABLE rooms (
@@ -110,6 +110,14 @@ function openDatabase(filename = process.env.SQLITE_PATH || path.join(__dirname,
       PRAGMA user_version = 3;
     `);
   })();
+  if (db.pragma('user_version', { simple: true }) === 3) db.transaction(() => {
+    db.exec(`
+      ALTER TABLE members ADD COLUMN is_npc INTEGER NOT NULL DEFAULT 0 CHECK(is_npc IN (0,1));
+      ALTER TABLE characters ADD COLUMN motivo_rechazo_narrativo TEXT NOT NULL DEFAULT '';
+      UPDATE characters SET motivo_rechazo_narrativo=narrative WHERE status='rejected';
+      PRAGMA user_version = 4;
+    `);
+  })();
   return db;
 }
 function recover(db) {
@@ -119,3 +127,4 @@ function recover(db) {
   })();
 }
 module.exports = { openDatabase, recover };
+

@@ -12,3 +12,4 @@ data/
 *.sqlite-shm
 
 public/vendor/
+
