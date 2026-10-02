@@ -10,7 +10,7 @@ function openDatabase(filename = process.env.SQLITE_PATH || path.join(__dirname,
   db.pragma('synchronous = FULL');
   db.pragma('busy_timeout = 5000');
   const version = db.pragma('user_version', { simple: true });
-  if (version > 2) throw new Error('Base de datos más reciente que este servidor');
+  if (version > 3) throw new Error('Base de datos más reciente que este servidor');
   if (version === 0) db.transaction(() => {
     db.exec(`
       CREATE TABLE rooms (
@@ -79,6 +79,35 @@ function openDatabase(filename = process.env.SQLITE_PATH || path.join(__dirname,
       ALTER TABLE actions ADD COLUMN roll_results TEXT;
       UPDATE actions SET stage='done' WHERE status='completed';
       PRAGMA user_version = 2;
+    `);
+  })();
+  if (db.pragma('user_version', { simple: true }) === 2) db.transaction(() => {
+    db.exec(`
+      ALTER TABLE characters ADD COLUMN appearance TEXT NOT NULL DEFAULT '';
+      ALTER TABLE characters ADD COLUMN avatar_url TEXT;
+      ALTER TABLE characters ADD COLUMN avatar_status TEXT NOT NULL DEFAULT 'pending';
+      ALTER TABLE characters ADD COLUMN public_history TEXT NOT NULL DEFAULT '';
+      ALTER TABLE characters ADD COLUMN equipment TEXT NOT NULL DEFAULT '[]';
+      ALTER TABLE characters ADD COLUMN inventory TEXT NOT NULL DEFAULT '[]';
+      CREATE TABLE character_states (
+        member_id TEXT NOT NULL REFERENCES characters(member_id) ON DELETE CASCADE,
+        label TEXT NOT NULL CHECK(length(label) BETWEEN 1 AND 40),
+        PRIMARY KEY(member_id,label)
+      );
+      CREATE TABLE social_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        room_code TEXT NOT NULL REFERENCES rooms(code) ON DELETE CASCADE,
+        sender_id TEXT REFERENCES members(id) ON DELETE SET NULL,
+        recipient_id TEXT REFERENCES members(id) ON DELETE SET NULL,
+        sender_name TEXT NOT NULL, recipient_name TEXT,
+        kind TEXT NOT NULL CHECK(kind IN ('global','whisper')),
+        text TEXT NOT NULL CHECK(length(text) BETWEEN 1 AND 1000),
+        client_id TEXT NOT NULL, created_at INTEGER NOT NULL,
+        UNIQUE(room_code,sender_id,client_id)
+      );
+      CREATE INDEX social_room ON social_messages(room_code,id);
+      CREATE INDEX social_private ON social_messages(room_code,recipient_id,id);
+      PRAGMA user_version = 3;
     `);
   })();
   return db;

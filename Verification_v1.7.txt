@@ -1,0 +1,6 @@
+PASS Python SQLite: creación v3, historia privada heredada, susurros filtrados por identidad/sala, separación narrativa/social.
+PASS Python SQLite: cascadas y rollback transaccional de estados/avance.
+PASS Python SQLite: migración de fixture v2 con personaje y awaiting_roll, sin pérdida ni publicación automática.
+PASS estático: IDs HTML únicos, referencias byId, rutas locales y orden de scripts.
+PASS estático: código de turnos sin consultas sociales/mochila y whitelist de fichas públicas. No sustituye prueba de Socket real.
+NO EJECUTADO: Node/npm, node --check, npm test, build DiceBox, navegador, Gemini y Pollinations reales. Node/npm no están en PATH; sin red.

@@ -1,0 +1,30 @@
+CRÓNICAS 1.6 — VERIFICACIÓN DE ENTREGA
+
+EJECUTADO EN PYTHON
+- Reconstrucción de los 23 archivos del consolidado adjunto, sin omisiones.
+- package.json válido, dependencia Gemini fijada y proveedor previo retirado.
+- Comparación textual exacta: db.js, mechanics.js, public/dice-ui.mjs,
+  public/main.js, public/style.css, workflow Pages y tests motor/mecánica intactos.
+- Los tres prompts originales idénticos. Presupuestos 1800/2600/2200 intactos.
+- Búsqueda sin referencias al proveedor previo en árbol actualizado.
+- Manifiesto SHA-256 y contenido TXT contrastados contra todos los archivos.
+- ZIP comprobado mediante testzip y comparación exacta de cada entrada.
+
+NO EJECUTADO / SIN CERTIFICAR
+- No existen Node/npm ni acceso de red. No npm install/check/test, esbuild,
+  better-sqlite3, Socket.io ni navegador ejecutados aquí.
+- No disponible el paquete npm original: estructura REAL publicada 1.1.4 no
+  contrastada. Tests build con fixtures sintéticas, no evidencia de distribución.
+- Corrección fuente: elimina falso requisito de nombre worker en assets;
+  preserva dist/assets y dist, valida WASM y evidencias Worker estáticas.
+  Verificar rutas reales y Network sin 404 tras instalar antes de producción.
+- Gemini real, disponibilidad gemini-1.5-flash/SDK legacy y costes no comprobados.
+  Si modelo retirado/no disponible, elegir GEMINI_MODEL habilitado explícitamente.
+- Tests unitarios, regresión e integración entregados NO aprobados; ejecutar Node22.
+- Sin lockfile fabricado, node_modules ni assets binarios inventados:
+  public/vendor se construye en instalación. ZIP fuente no imagen precompilada.
+- Render/Pages/HTTPS/CSP/WebGL/móviles/backup y anti-trampas no certificados.
+
+Sin secretos ni DB reales. Historial de notas normalizado para anonimizar
+proveedor previo; los prompts fuente no se modificaron. Cancelación lógica no
+promete cancelar facturación. Validación de dados cliente no certifica azar.

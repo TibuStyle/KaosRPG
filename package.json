@@ -1,6 +1,6 @@
 {
   "name": "cronicas-rpg",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "private": true,
   "description": "RPG asíncrono persistente con SQLite y turnos estrictos",
   "main": "server.js",
@@ -10,7 +10,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "check": "node --check server.js && node --check db.js && node --check approval.js && node --check public/main.js && node --check mechanics.js && node --check scripts/build-dice.cjs && node --check public/dice-ui.mjs && node --check gemini.js && node --check test/mock-server.cjs",
+    "check": "node --check server.js && node --check db.js && node --check approval.js && node --check public/main.js && node --check mechanics.js && node --check scripts/build-dice.cjs && node --check public/dice-ui.mjs && node --check gemini.js && node --check test/mock-server.cjs && node --check social.js && node --check portraits.js && node --check public/social.js",
     "test": "node --test test/*.test.js",
     "build:frontend": "node scripts/build-dice.cjs",
     "postinstall": "npm run build:frontend"

@@ -10,6 +10,9 @@ const { rateLimit } = require('express-rate-limit');
 const { Server } = require('socket.io');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { generateJSON } = require('./gemini');
+const {createPortrait}=require('./portraits');
+const {CHARACTER_SCHEMA,CHARACTER_PROMPT,validateCharacter,validateInventory,
+  FINAL_SCHEMA,FINAL_PROMPT,validateFinal,publicSheet,socialHistory,validateChat}=require('./social');
 
 const PORT = Number(process.env.PORT || 3000);
 if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) throw new Error('PORT inválido');
@@ -31,6 +34,7 @@ app.use(helmet({
   contentSecurityPolicy: { directives: {
     'script-src': ["'self'", "'wasm-unsafe-eval'", 'https://cdn.socket.io'],
     'worker-src': ["'self'", 'blob:'],
+    'img-src': ["'self'", 'data:', 'https://image.pollinations.ai'],
     'connect-src': ["'self'", 'https:', 'wss:'],
     'upgrade-insecure-requests': production ? [] : null
   } },
@@ -39,7 +43,7 @@ app.use(helmet({
 const allowed = origin => !origin || origins.has(origin);
 app.use(cors({ origin(origin, callback) { callback(null, allowed(origin)); } }));
 app.use(rateLimit({ windowMs: 60000, limit: 180, standardHeaders: 'draft-7', legacyHeaders: false }));
-app.get('/health', (_req, res) => res.json({ ok: true, version: '1.6.0' }));
+app.get('/health', (_req, res) => res.json({ ok: true, version: '1.7.0' }));
 app.use(express.static(path.join(__dirname, 'public')));
 const server = http.createServer(app);
 const handshakes = new Map();
@@ -97,7 +101,7 @@ function config(room) {
     magicLevel:room.magic_level, adventureTone:room.adventure_tone, mortality:room.mortality };
 }
 function members(code) {
-  return all(`SELECT m.*, c.status AS character_status, c.name AS character_name FROM members m
+  return all(`SELECT m.*, c.status AS character_status, c.name AS character_name, c.avatar_url FROM members m
     LEFT JOIN characters c ON c.member_id=m.id WHERE m.room_code=? ORDER BY m.joined_order`, code);
 }
 function canStart(room) {
@@ -120,7 +124,7 @@ function messages(code, before) {
 function snapshot(room) {
   return { code:room.code,world:config(room),phase:room.phase,canStart:canStart(room),
     members:members(room.code).map(m=>({id:m.id,name:m.name,isHost:Boolean(m.is_host),connected:Boolean(m.socket_id),
-      ready:m.character_status==='approved',characterStatus:m.character_status||'draft',characterName:m.character_name||null})),
+      ready:m.character_status==='approved',characterStatus:m.character_status||'draft',characterName:m.character_name||null,avatarUrl:m.character_status==='approved'?m.avatar_url:null})),
     turn:turn(room),messages:messages(room.code) };
 }
 function broadcast(code) { const room=one('SELECT * FROM rooms WHERE code=?',code); if(room) io.to(code).emit('room:state',snapshot(room)); }
@@ -131,7 +135,19 @@ function current(socket) {
   const room=one('SELECT * FROM rooms WHERE code=?',member.room_code);
   if(!room) fail('La sala no existe.'); return {room,member};
 }
-function privateCharacter(id) { return one('SELECT name,history,status,narrative FROM characters WHERE member_id=?',id)||null; }
+function privateCharacter(id) { return one('SELECT name,history,status,narrative,appearance,avatar_url AS avatarUrl,avatar_status AS avatarStatus FROM characters WHERE member_id=?',id)||null; }
+function publicSheets(code) {return members(code).map(m=>publicSheet(db,m.id)).filter(Boolean);}
+function aiSheets(code) {return publicSheets(code).map(({memberId,name,history,equipment,states})=>({memberId,name,history,equipment,states}));}
+function notifyMember(id,event,data) {
+  const m=one('SELECT socket_id FROM members WHERE id=?',id);
+  if(m?.socket_id)io.to(m.socket_id).emit(event,data);
+}
+function applyStates(states) {
+  for(const x of states) {
+    if(x.operation==='poner')run('INSERT OR IGNORE INTO character_states VALUES(?,?)',x.memberId,x.label);
+    else run('DELETE FROM character_states WHERE member_id=? AND label=?',x.memberId,x.label);
+  }
+}
 function unused(socket) { if(socket.data.tokenHash && one('SELECT 1 FROM sessions WHERE token_hash=?',socket.data.tokenHash)) fail('Sal de tu sala actual antes de crear o unirte.'); }
 function newCode() {
   for(let n=0;n<100;n++) { let code=''; for(let i=0;i<6;i++) code+=String.fromCharCode(65+crypto.randomInt(26));
@@ -185,24 +201,29 @@ async function evaluateCharacter(room,member,draft) {
   const revision=db.transaction(()=> {
     budget(member,room);
     run('UPDATE members SET revision=revision+1 WHERE id=?',member.id);
-    run(`INSERT INTO characters VALUES(?,?,?,'evaluating','') ON CONFLICT(member_id) DO UPDATE
-      SET name=excluded.name,history=excluded.history,status='evaluating',narrative=''`,member.id,draft.name,draft.history);
+    run(`INSERT INTO characters(member_id,name,history,status,narrative,appearance) VALUES(?,?,?,'evaluating','',?) ON CONFLICT(member_id) DO UPDATE
+      SET name=excluded.name,history=excluded.history,appearance=excluded.appearance,status='evaluating',narrative=''`,member.id,draft.name,draft.history,draft.appearance);
     run('DELETE FROM traits WHERE member_id=?',member.id);
     return one('SELECT revision FROM members WHERE id=?',member.id).revision;
   })();
   const controller=new AbortController(); jobs.set(key,controller); broadcast(room.code);
   const valid=()=> one(`SELECT 1 FROM members m JOIN rooms r ON r.code=m.room_code WHERE m.id=? AND m.revision=? AND r.phase='lobby'`,member.id,revision);
   try {
-    const result=validateDecision(await jsonCompletion(MASTER_PROMPT,{mundo:config(room),personaje:draft},controller));
+    const result=validateCharacter(await jsonCompletion(CHARACTER_PROMPT,{mundo:config(room),
+      personaje:{name:draft.name,history:draft.history,appearance:draft.appearance}},controller,2600,CHARACTER_SCHEMA));
+    if(controller.signal.aborted||!valid()||stopping)fail('Evaluación cancelada.');
+    const portrait=result.aprobado ? await createPortrait(room,result.visual,{signal:controller.signal}) : {url:null,status:'pending'};
     db.transaction(()=> {
-      if(!valid()||stopping) fail('Evaluación cancelada.');
+      if(!valid()||stopping||controller.signal.aborted) fail('Evaluación cancelada.');
       run('UPDATE characters SET status=?,narrative=? WHERE member_id=?',result.aprobado?'approved':'rejected',result.mensaje_narrativo,member.id);
+      run('UPDATE characters SET public_history=?,equipment=?,avatar_url=?,avatar_status=? WHERE member_id=?',
+        result.aprobado?draft.history:'',JSON.stringify(result.aprobado?result.equipment:[]),portrait.url,portrait.status,member.id);
       if(result.aprobado) for(const trait of [...result.perks,...result.defectos]) run('INSERT INTO traits VALUES(?,?,?)',member.id,trait.tipo,trait.nombre);
     })();
     broadcast(room.code); return {character:privateCharacter(member.id)};
   } catch(error) {
     if(valid()) db.transaction(()=> {
-      const unchanged=previous && previous.name===draft.name && previous.history===draft.history;
+      const unchanged=previous && previous.name===draft.name && previous.history===draft.history && previous.appearance===draft.appearance;
       run('UPDATE characters SET status=?,narrative=? WHERE member_id=?',unchanged?previous.status:'draft',unchanged?previous.narrative:'',member.id);
       run('DELETE FROM traits WHERE member_id=?',member.id);
       if(unchanged) for(const t of traits) run('INSERT INTO traits VALUES(?,?,?)',member.id,t.kind,t.name);
@@ -226,10 +247,11 @@ async function processAction(id) {
     const member=one('SELECT * FROM members WHERE id=?',action.member_id);
     const traits=all('SELECT kind,name FROM traits WHERE member_id=? ORDER BY kind,name',member.id);
     const context=messages(room.code).slice(-20).map(m=>({autor:m.authorName,tipo:m.kind,texto:m.text}));
-    let evaluation,narrativeText;
+    let evaluation,narrativeText,stateChanges=[];
+    const sheets=aiSheets(room.code);
     if(action.stage==='evaluation') {
       const output=await jsonCompletion(EVALUATION_PROMPT,{mundo:config(room),registro:context,
-        accion:action.text,es_director:Boolean(member.is_host),rasgos_ocultos:traits},controller,2600,EVALUATION_SCHEMA);
+        accion:action.text,es_director:Boolean(member.is_host),rasgos_ocultos:traits,fichas_publicas:sheets},controller,2600,EVALUATION_SCHEMA);
       evaluation=validateEvaluation(output,traits);
       evaluation.narrativa_previa=redact(evaluation.narrativa_previa,traits);
       if(!evaluation.requiere_dado) narrativeText=evaluation.narrativa_previa;
@@ -237,23 +259,32 @@ async function processAction(id) {
       evaluation=JSON.parse(action.pending_roll);
       const roll=validateRoll(JSON.parse(action.roll_results),evaluation);
       const cd=adjustedDC(evaluation);
-      const output=await jsonCompletion(RESOLUTION_PROMPT,{mundo:config(room),registro:context,
+      const output=await jsonCompletion(FINAL_PROMPT,{mundo:config(room),registro:context,fichas_publicas:sheets,
         accion:action.text,narrativa_previa:evaluation.narrativa_previa,
         tirada:roll,cd_base:evaluation.cd_base,cd_final:cd,
-        modificadores:publicEvaluation(evaluation).modificadores,exito:roll.total>=cd},controller,2200,RESOLUTION_SCHEMA);
-      if(!output||Array.isArray(output)||Object.keys(output).length!==1||!Object.hasOwn(output,'narrativa')) fail('JSON narrativo inválido.');
-      narrativeText=redact(narrative(output.narrativa),traits);
+        modificadores:publicEvaluation(evaluation).modificadores,exito:roll.total>=cd},controller,2600,FINAL_SCHEMA);
+      const final=validateFinal(output,sheets);
+      // Conserva redacción literal de rasgos ocultos también en etiquetas públicas.
+      const roomTraits=all('SELECT t.kind,t.name FROM traits t JOIN members m ON m.id=t.member_id WHERE m.room_code=?',room.code);
+      if(final.states.some(x=>redact(x.label,roomTraits)!==x.label))fail('Estado con rasgo privado.');
+      stateChanges=final.states;
+      narrativeText=redact(final.narrative,roomTraits);
       narrativeText=`Tirada: ${roll.resultados.map(r=>`d${r.caras}=${r.valor}`).join(', ')}. Total ${roll.total} contra CD ${cd}: ${roll.total>=cd?'éxito':'fallo'}.\n\n${narrativeText}`;
     }
     db.transaction(()=> {
       const r=one('SELECT * FROM rooms WHERE code=?',action.room_code),a=one('SELECT * FROM actions WHERE id=?',id);
-      if(stopping||!r||!a||a.status!=='pending'||a.stage!==action.stage||r.turn_version!==a.turn_version||turn(r).memberId!==a.member_id) fail('Acción obsoleta.');
+      if(stopping||controller.signal.aborted||!r||!a||a.status!=='pending'||a.stage!==action.stage||r.turn_version!==a.turn_version||turn(r).memberId!==a.member_id) fail('Acción obsoleta.');
       if(action.stage==='evaluation' && evaluation.requiere_dado) {
         run("UPDATE actions SET stage='awaiting_roll',pending_roll=? WHERE id=?",JSON.stringify(evaluation),id);
         // Mensaje preparatorio distinto del mensaje final: no colisiona UNIQUE(action_id,kind).
         run("INSERT INTO messages(room_code,author_name,kind,text,action_id,created_at) VALUES(?,'Director IA','system',?,?,?)",
           r.code,evaluation.narrativa_previa,id,Date.now());
         return; // NO avanzar hasta la consecuencia final.
+      }
+      // Revalida contra DB actual antes del commit; límites y retiro siguen atómicos.
+      if(stateChanges.length) {
+        const checked=validateFinal({narrativa:'Validación de estados',estados:stateChanges.map(x=>({member_id:x.memberId,operacion:x.operation,etiqueta:x.label}))},publicSheets(r.code));
+        applyStates(checked.states);
       }
       run("INSERT INTO messages(room_code,author_name,kind,text,action_id,created_at) VALUES(?,'Director IA','ai',?,?,?)",r.code,narrativeText,id,Date.now());
       run("UPDATE actions SET status='completed',stage='done' WHERE id=?",id);
@@ -314,7 +345,9 @@ io.on('connection',socket=> {
     const {room,member}=current(socket);
     if(member.is_host) fail('Solo jugadores crean personajes.');
     if(room.phase!=='lobby') fail('No puedes editar después de empezar.');
-    return evaluateCharacter(room,member,{name:text(payload?.name,1,60,'Personaje'),history:text(payload?.history,1,6000,'Historia')});
+    if(payload?.publicConsent!==true||payload?.portraitConsent!==true)fail('Confirma publicación de historia y envío de apariencia al proveedor de retratos.');
+    return evaluateCharacter(room,member,{name:text(payload?.name,1,60,'Personaje'),history:text(payload?.history,1,6000,'Historia'),
+      appearance:text(payload?.appearance??'',0,1000,'Apariencia')});
   });
   handle('adventure:start',()=> {
     const {room,member}=current(socket);
@@ -329,6 +362,59 @@ io.on('connection',socket=> {
         'La aventura comienza. Cola estricta: Director y jugadores por orden de unión. No hay saltos automáticos.',Date.now());
     })();
     broadcast(room.code); return {room:snapshot(one('SELECT * FROM rooms WHERE code=?',room.code))};
+  });
+  handle('character:public',payload=> {
+    const {room}=current(socket);const id=payload?.memberId;
+    if(typeof id!=='string'||!one('SELECT 1 FROM members WHERE id=? AND room_code=?',id,room.code))fail('Personaje no disponible en esta sala.');
+    return {character:publicSheet(db,id)};
+  });
+  handle('character:publish-history',()=> {
+    const {room,member}=current(socket);
+    const c=one("SELECT * FROM characters WHERE member_id=? AND status='approved'",member.id);
+    if(!c)fail('Necesitas un personaje aprobado.');
+    run('UPDATE characters SET public_history=history WHERE member_id=?',member.id);
+    broadcast(room.code);return {character:publicSheet(db,member.id)};
+  });
+  handle('inventory:get',()=> {
+    const {member}=current(socket);
+    const c=one('SELECT inventory FROM characters WHERE member_id=?',member.id);
+    if(!c)fail('No tienes personaje.');
+    return {items:JSON.parse(c.inventory)}; // Sin memberId del cliente: SIEMPRE propietario autenticado.
+  });
+  handle('inventory:save',payload=> {
+    const {member}=current(socket);const items=validateInventory(payload?.items);
+    if(!one('SELECT 1 FROM characters WHERE member_id=?',member.id))fail('No tienes personaje.');
+    run('UPDATE characters SET inventory=? WHERE member_id=?',JSON.stringify(items),member.id);
+    return {items}; // Nunca broadcast, Gemini ni ficha pública.
+  });
+  handle('social:history',payload=> {
+    const {room,member}=current(socket);const before=payload?.before??Number.MAX_SAFE_INTEGER;
+    if(!Number.isSafeInteger(before)||before<=0)fail('Cursor inválido.');
+    return {messages:socialHistory(db,room.code,member.id,before)};
+  });
+  handle('social:send',payload=> {
+    const {room,member}=current(socket);const value=validateChat(payload);
+    const recipient=value.kind==='whisper'?one('SELECT * FROM members WHERE id=? AND room_code=?',value.recipientId,room.code):null;
+    if(value.kind==='whisper'&&(!recipient||recipient.id===member.id))fail('Elige otro participante de tu sala.');
+    const saved=db.transaction(()=> {
+      const prior=one('SELECT * FROM social_messages WHERE room_code=? AND sender_id=? AND client_id=?',room.code,member.id,value.id);
+      if(prior) {
+        if(prior.text!==value.text||prior.kind!==value.kind||prior.recipient_id!==value.recipientId)fail('Identificador de mensaje reutilizado.');
+        return {id:prior.id,fresh:false};
+      }
+      const now=Date.now(),key='social:'+member.id,e=one('SELECT * FROM rate_limits WHERE key=?',key);
+      if(e&&now-e.start<60000&&e.count>=20)fail('Máximo 20 mensajes sociales por minuto.');
+      run('INSERT OR REPLACE INTO rate_limits VALUES(?,?,?)',key,e&&now-e.start<60000?e.start:now,e&&now-e.start<60000?e.count+1:1);
+      const result=run(`INSERT INTO social_messages(room_code,sender_id,recipient_id,sender_name,recipient_name,kind,text,client_id,created_at)
+        VALUES(?,?,?,?,?,?,?,?,?)`,room.code,member.id,recipient?.id||null,member.name,recipient?.name||null,value.kind,value.text,value.id,now);
+      return {id:Number(result.lastInsertRowid),fresh:true};
+    })();
+    const message=socialHistory(db,room.code,member.id,saved.id+1).find(m=>m.id===saved.id);
+    if(saved.fresh) {
+      if(value.kind==='global')io.to(room.code).emit('social:message',message);
+      else {notifyMember(member.id,'social:message',message);notifyMember(recipient.id,'social:message',message);}
+    }
+    return {message};
   });
   handle('action:submit',payload=> {
     const {room,member}=current(socket);
@@ -419,7 +505,7 @@ const maintenance=setInterval(()=> {
   run('DELETE FROM rate_limits WHERE start<?',now-60000);
 },30000);
 maintenance.unref();
-server.listen(PORT,()=>console.log(`Crónicas 1.5 escuchando en puerto ${PORT}; SQLite persistente`));
+server.listen(PORT,()=>console.log(`Crónicas 1.7 escuchando en puerto ${PORT}; SQLite persistente`));
 function shutdown() {
   if(stopping) return; stopping=true; clearInterval(maintenance);
   for(const controller of jobs.values()) controller.abort();
