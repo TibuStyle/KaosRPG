@@ -9,10 +9,11 @@
   <link rel="stylesheet" href="./style.css">
   <script defer src="https://cdn.socket.io/4.8.1/socket.io.min.js" crossorigin="anonymous"></script>
   <script src="./social.js" defer></script>
+  <script src="./audio.js" defer></script>
   <script defer src="./main.js"></script>
 </head>
 <body>
-  <header><span class="brand">CRÓNICAS</span><span class="badge">v1.8 · Forja del Director</span></header>
+  <header><span class="brand">CRÓNICAS</span><span class="badge">v1.9 · Forja del Director</span></header>
   <p id="connection-status" class="connection muted" role="status" aria-live="polite">Preparando conexión…</p>
   <main>
     <section id="screen-home" class="screen hero" aria-labelledby="home-title">
@@ -21,13 +22,13 @@
       <h1 id="home-title" tabindex="-1">Crónicas</h1>
       <p class="muted">Crea una historia persistente. El Director IA evalúa personajes y narra las acciones de una cola estricta de turnos.</p>
       <div class="menu">
-        <button id="play-button" class="btn btn-primary" type="button">Jugar</button>
-        <button id="options-button" class="btn" type="button">Opciones / Servidor</button>
+        <button id="play-button" class="btn btn-primary" type="button" data-sfx="open">Jugar</button>
+        <button id="options-button" class="btn" type="button" data-sfx="open">Opciones / Servidor</button>
       </div>
       <p class="help">Las historias se guardan en SQLite y esperan a cada participante sin límite de tiempo.</p>
     </section>
     <section id="screen-lobby" class="screen" aria-labelledby="lobby-title" hidden>
-      <button id="back-button" class="btn btn-back" type="button">← Volver al inicio</button>
+      <button id="back-button" class="btn btn-back" type="button" data-sfx="close">← Volver al inicio</button>
       <p class="eyebrow">Reúne a tu grupo</p>
       <h2 id="lobby-title" tabindex="-1">Lobby de historias</h2>
       <p class="muted">Crea una sala real o únete con un código de seis letras.</p>
@@ -35,22 +36,22 @@
         <article class="card">
           <h3>Crear Historia</h3>
           <p class="muted">Configura tu mundo y espera a tus jugadores.</p>
-          <button id="create-button" class="btn btn-primary" type="button" aria-controls="panel-create" aria-expanded="false">Crear Historia</button>
+          <button id="create-button" class="btn btn-primary" type="button" aria-controls="panel-create" aria-expanded="false" data-sfx="open">Crear Historia</button>
         </article>
         <article class="card">
           <h3>Unirse a Historia</h3>
           <p class="muted">Accede a la sala y crea tu personaje.</p>
-          <button id="join-button" class="btn" type="button" aria-controls="panel-join" aria-expanded="false">Unirse a Historia</button>
+          <button id="join-button" class="btn" type="button" aria-controls="panel-join" aria-expanded="false" data-sfx="open">Unirse a Historia</button>
         </article>
       </div>
       <section id="panel-create" class="card panel" aria-labelledby="create-title" hidden>
-        <div class="panel-heading"><h3 id="create-title">Preparar historia</h3><button class="btn" type="button" data-close-panel>Cerrar</button></div>
+        <div class="panel-heading"><h3 id="create-title">Preparar historia</h3><button class="btn" type="button" data-close-panel data-sfx="close">Cerrar</button></div>
         <p class="notice">El servidor valida y conserva esta configuración en SQLite. El DM de IA evalúa los personajes según estas reglas y prohibiciones. No garantiza detectar todas las infracciones; revisad sus decisiones.</p>
         <form id="create-form" class="form-grid">
           <div><label for="host-name">Tu nombre como anfitrión</label><input id="host-name" name="playerName" maxlength="40" required autocomplete="nickname"></div>
           <div><label for="story-name">Nombre del juego</label><input id="story-name" name="storyName" maxlength="80" required placeholder="Las cenizas de Valdoria"></div>
           <div>
-            <div class="field-heading"><label for="story-premise">Premisa (opcional)</label><button id="random-premise-button" class="btn btn-random" type="button" aria-describedby="random-help">✦ Generar premisa</button></div>
+            <div class="field-heading"><label for="story-premise">Premisa (opcional)</label><button id="random-premise-button" class="btn btn-random" type="button" aria-describedby="random-help" data-sfx="notify">✦ Generar premisa</button></div>
             <textarea id="story-premise" name="premise" maxlength="2000" aria-describedby="random-help"></textarea>
             <p id="random-help" class="help">Gemini crea 3 o 4 párrafos según tus reglas. Envía nombre, premisa y líneas rojas al proveedor; consume API. Revisa el resultado antes de crear la sala.</p>
             <p id="random-status" class="status" role="status"></p>
@@ -61,16 +62,16 @@
             <div><label for="mortality">Mortalidad</label><select id="mortality" name="mortality"><option value="story">Modo Historia</option><option value="relentless">Modo Implacable</option></select></div>
           </div>
           <div><label for="red-lines">Líneas Rojas (Baneos)</label><textarea id="red-lines" name="redLines" maxlength="4000" rows="5" aria-describedby="red-lines-help"></textarea><p id="red-lines-help" class="help">Opcional, máximo 4000 caracteres. Visible para el grupo; se incluyen como prohibiciones estrictas en la evaluación del DM de IA.</p></div>
-          <button class="btn btn-primary" type="submit">Validar y crear sala</button>
+          <button class="btn btn-primary" type="submit" data-sfx="confirm">Validar y crear sala</button>
           <p id="create-status" class="status" role="status" aria-live="polite"></p>
         </form>
       </section>
       <section id="panel-join" class="card panel" aria-labelledby="join-title" hidden>
-        <div class="panel-heading"><h3 id="join-title">Unirse al grupo</h3><button class="btn" type="button" data-close-panel>Cerrar</button></div>
+        <div class="panel-heading"><h3 id="join-title">Unirse al grupo</h3><button class="btn" type="button" data-close-panel data-sfx="close">Cerrar</button></div>
         <form id="join-form" class="form-grid">
           <div><label for="player-name">Tu nombre de jugador</label><input id="player-name" name="playerName" maxlength="40" required autocomplete="nickname"></div>
           <div><label for="room-code">Código de sala</label><input id="room-code" name="code" minlength="6" maxlength="6" pattern="[A-Za-z]{6}" required autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCDEF" aria-describedby="code-help"><p id="code-help" class="help">Seis letras A-Z. Las minúsculas se normalizan.</p></div>
-          <button class="btn btn-primary" type="submit">Unirse y crear personaje</button>
+          <button class="btn btn-primary" type="submit" data-sfx="confirm">Unirse y crear personaje</button>
           <p id="join-status" class="status" role="status" aria-live="polite"></p>
         </form>
       </section>
@@ -95,7 +96,7 @@
           <div><label for="character-appearance">Apariencia Estética</label><textarea id="character-appearance" name="appearance" rows="6" maxlength="1000" aria-describedby="appearance-help" placeholder="Cabello plateado, abrigo de lana verde, ojos ámbar..."></textarea><p id="appearance-help" class="help">Solo visual: no concede equipo, armas, poderes ni ventajas. El backend traduce esta descripción al inglés para Pollinations. Hasta 1000 caracteres.</p></div>
           <label class="consent"><input type="checkbox" id="public-consent" required> Entiendo que mi historia aprobada se publicará al grupo. No contiene información secreta.</label>
           <label class="consent"><input type="checkbox" id="portrait-consent" required> Autorizo enviar mi apariencia estética y reglas generales del mundo a Pollinations. La URL del retrato contiene el prompt; no incluiré datos sensibles.</label>
-          <button class="btn btn-primary" type="submit">Enviar Personaje</button>
+          <button class="btn btn-primary" type="submit" data-sfx="confirm">Enviar Personaje</button>
           <p id="character-status" class="status" role="alert" aria-live="polite"></p>
         </form>
       </section>
@@ -121,7 +122,7 @@
             <form id="action-form" class="form-grid">
               <label for="action-text">Acción del turno</label>
               <input id="action-text" name="text" maxlength="2000" required autocomplete="off" disabled>
-              <button id="action-send" class="btn btn-primary" type="submit" disabled>Enviar acción</button>
+              <button id="action-send" class="btn btn-primary" type="submit" disabled data-sfx="confirm">Enviar acción</button>
               <button id="action-retry" class="btn" type="button" hidden>Reintentar narración del mismo turno</button>
               <p id="action-status" class="status" role="status"></p>
             </form>
@@ -137,39 +138,39 @@
         <form id="social-form" class="form-grid">
           <label for="social-target">Canal / destinatario</label><select id="social-target"><option value="">Global (Off-Rol)</option></select>
           <label for="social-text">Mensaje</label><textarea id="social-text" rows="3" maxlength="1000" required></textarea>
-          <button id="social-send" class="btn btn-primary" type="submit">Enviar mensaje humano</button>
+          <button id="social-send" class="btn btn-primary" type="submit" data-sfx="none">Enviar mensaje humano</button>
           <p id="social-status" class="status" role="status"></p>
         </form>
       </aside>
-      <div class="actions"><button id="start-button" class="btn btn-primary" type="button" hidden disabled>Empezar Aventura</button><button id="wipe-button" class="btn btn-danger" type="button" hidden>Borrar Sala</button>
-          <button id="npc-button" class="btn" type="button" hidden>Añadir NPC</button>
-          <button id="leave-button" class="btn" type="button">Salir de la sala</button></div>
+      <div class="actions"><button id="start-button" class="btn btn-primary" type="button" hidden disabled data-sfx="notify">Empezar Aventura</button><button id="wipe-button" class="btn btn-danger" type="button" hidden>Borrar Sala</button>
+          <button id="npc-button" class="btn" type="button" hidden data-sfx="open">Añadir NPC</button>
+          <button id="leave-button" class="btn" type="button" data-sfx="close">Salir de la sala</button></div>
     </section>
     <noscript><p class="notice">Activa JavaScript para jugar.</p></noscript>
   </main>
   <dialog id="npc-dialog" class="parchment" aria-labelledby="npc-title">
-    <div class="panel-heading"><h2 id="npc-title">Añadir NPC</h2><button id="npc-close" class="btn" type="button">Cerrar</button></div>
+    <div class="panel-heading"><h2 id="npc-title">Añadir NPC</h2><button id="npc-close" class="btn" type="button" data-sfx="close">Cerrar</button></div>
     <p class="help">El Director asume el balance y lore: este NPC entra aprobado, sin IA ni retrato, al final de la cola. Su historia será pública. Solo tú escribes sus acciones y envías sus tiradas.</p>
     <form id="npc-form" class="form-grid">
       <div><label for="npc-name">Nombre</label><input id="npc-name" maxlength="60" required></div>
       <div><label for="npc-history">Historia pública</label><textarea id="npc-history" maxlength="6000" required></textarea></div>
-      <button id="npc-save" class="btn btn-primary" type="submit">Añadir NPC a la sala</button>
+      <button id="npc-save" class="btn btn-primary" type="submit" data-sfx="confirm">Añadir NPC a la sala</button>
       <p id="npc-status" class="status" role="alert"></p>
     </form>
   </dialog>
-  <footer>SQLite · cola asíncrona estricta · tiradas dinámicas · mapas pendientes</footer>
+  <footer>SQLite · cola asíncrona estricta · tiradas dinámicas · audio inmersivo</footer>
   <dialog id="options-dialog" aria-labelledby="options-title">
     <h2 id="options-title">Opciones / Servidor</h2>
     <form id="server-form" class="form-grid">
       <div><label for="backend-url">URL del backend</label><input id="backend-url" type="url" required placeholder="https://tu-backend.example.com" aria-describedby="backend-help"><p id="backend-help" class="help">URL base, sin ruta. En GitHub Pages configura un backend HTTPS externo. No puedes cambiarla dentro de una sala.</p></div>
-      <button class="btn btn-primary" type="submit">Guardar y conectar</button>
+      <button class="btn btn-primary" type="submit" data-sfx="confirm">Guardar y conectar</button>
       <p id="server-status" class="status" role="status"></p>
     </form>
-    <p class="help">Audio pendiente. Dados 3D usan WebGL y workers locales. Se respeta el movimiento reducido del sistema.</p>
-    <form method="dialog"><button class="btn" autofocus>Cerrar</button></form>
+    <p class="help">Motor de audio inmersivo activado. Dados 3D usan WebGL y workers locales. Se respeta el movimiento reducido del sistema.</p>
+    <form method="dialog"><button class="btn" autofocus data-sfx="close">Cerrar</button></form>
   </dialog>
   <dialog id="sheet-dialog" class="parchment" aria-labelledby="sheet-title">
-    <form method="dialog"><button class="btn" autofocus>Cerrar ficha</button></form>
+    <form method="dialog"><button class="btn" autofocus data-sfx="close">Cerrar ficha</button></form>
     <h2 id="sheet-title">Ficha pública</h2>
     <p id="sheet-status" role="status"></p>
     <div id="sheet-content" hidden>
@@ -181,18 +182,17 @@
       <p class="help">Equipo narrativo, sin estadísticas de ataque/defensa. No procede de la apariencia.</p>
       <h3>Estados / Buffs / Debuffs</h3><ul id="sheet-states" class="state-list"></ul>
       <p class="help">Etiquetas narrativas públicas actualizadas por el Director IA al resolver una tirada. No alteran automáticamente la CD.</p>
-      <button id="inventory-open" class="btn" type="button" hidden>Mochila (Privado)</button>
+      <button id="inventory-open" class="btn" type="button" hidden data-sfx="open">Mochila (Privado)</button>
     </div>
   </dialog>
   <dialog id="inventory-dialog" class="parchment" aria-labelledby="inventory-title">
-    <form method="dialog"><button class="btn" autofocus>Cerrar mochila</button></form>
+    <form method="dialog"><button class="btn" autofocus data-sfx="close">Cerrar mochila</button></form>
     <h2 id="inventory-title">Mochila (Privado)</h2>
     <p>Solo tú recibes estos objetos. No se publican, no se envían a Gemini y no conceden ventajas. Registro narrativo manual, no economía validada.</p>
     <form id="inventory-form" class="form-grid"><label for="inventory-items">Un objeto por línea · máximo 30</label>
-      <textarea id="inventory-items" rows="10" maxlength="3630"></textarea><button class="btn" type="submit">Guardar mi inventario</button>
+      <textarea id="inventory-items" rows="10" maxlength="3630"></textarea><button class="btn" type="submit" data-sfx="confirm">Guardar mi inventario</button>
       <p id="inventory-status" role="status"></p>
     </form>
   </dialog>
 </body>
 </html>
-

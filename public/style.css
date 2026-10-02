@@ -31,3 +31,24 @@ h1{color:#ffe1a0;text-shadow:0 3px 2px #000,0 0 32px #cc843466}h2{color:var(--ac
 @media(prefers-reduced-motion:reduce){.btn:hover:not(:disabled),.btn:active:not(:disabled){transform:none}body{background-attachment:scroll}}
 
 .parchment .status{color:#5b3916}.parchment .status[data-error=true]{color:#801d1b;background:#fff1d1;border-left:4px solid #982b23;padding:10px}.parchment .help{color:#55402a}
+
+/* v1.9 — Game feel: pergamino que se desenrolla + máquina de escribir. */
+@keyframes unroll{
+  0%{clip-path:inset(0 0 100% 0 round 8px);transform:scaleY(.92);opacity:.2}
+  70%{clip-path:inset(0 0 0 0 round 8px);transform:scaleY(1.01);opacity:1}
+  100%{clip-path:inset(0 0 0 0 round 8px);transform:none;opacity:1}
+}
+@keyframes backdrop-in{from{opacity:0}to{opacity:1}}
+@keyframes ink-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes caret{50%{opacity:0}}
+.panel:not([hidden]),.roll-panel:not([hidden]),dialog[open]{transform-origin:top center;animation:unroll .55s cubic-bezier(.2,.8,.25,1) both}
+.screen:not([hidden]) > .card{animation:ink-in .35s ease-out both}
+dialog[open]::backdrop{animation:backdrop-in .3s ease-out both}
+/* "Varillas" del pergamino al abrirse */
+.panel:not([hidden])::after,dialog[open]::after{content:'';position:absolute;left:-2px;right:-2px;top:-6px;height:8px;border-radius:4px;background:linear-gradient(#8a6232,#4a2f16);box-shadow:0 2px 4px #0006;pointer-events:none}
+.chat-message.is-new{animation:ink-in .3s ease-out both}
+.typing::after{content:'▌';margin-left:1px;color:#643510;animation:caret .8s steps(1) infinite}
+.narrative-chat{cursor:default}
+.narrative-chat:has(.typing){cursor:pointer}
+.sr-only{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+@media(prefers-reduced-motion:reduce){.typing::after{content:none}.panel::after,dialog::after{display:none}}

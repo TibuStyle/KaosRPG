@@ -40,10 +40,10 @@ export async function rollDice(notations) {
     timeout=setTimeout(()=>reject(new Error('El motor 3D no terminó. Revisa WebGL, workers y assets.')),60000);
   });
   try {
-    // Exactamente el array guardado por servidor, sin modificadores añadidos al motor.
+    try { window.CronicasAudio?.play?.('diceRoll'); } catch { /* Audio opcional. */ }
     Promise.resolve(box.roll([...notations])).catch(error=>activeRoll?.reject(error));
     const results=await finished;
+    try { window.CronicasAudio?.play?.('diceLand'); } catch { /* Audio opcional. */ }
     return normalize(results,notations);
   } finally {clearTimeout(timeout);activeRoll=null;}
 }
-

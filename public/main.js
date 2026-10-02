@@ -7,6 +7,21 @@ const storage = {
   set(key, value) { try { sessionStorage.setItem(key, value); } catch { /* Sin recuperación tras recarga. */ } },
   remove(key) { try { sessionStorage.removeItem(key); } catch { /* Almacenamiento no disponible. */ } }
 };
+
+// v1.9 — Audio (Tramo 1: audio.js). Todo protegido: sin audio, el juego sigue.
+const audio = window.CronicasAudio || null;
+const SFX = { turn:'turn', whisper:'whisper', message:'message', reject:'reject', approve:'approve',
+  error:'error', success:'success', fail:'failure', type:'type' };
+function sfx(key) { try { audio?.play?.(SFX[key] || key); } catch { /* Audio opcional. */ } }
+let currentMusic = null;
+function music(name) {
+  if (name === currentMusic) return;
+  currentMusic = name;
+  try { audio?.setMusic?.(name); } catch { /* Audio opcional. */ }
+}
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+let rollSoundId = null;
+
 const fallback = /^https?:$/.test(location.protocol) && !location.hostname.endsWith('.github.io')
   ? location.origin : '';
 let backend = storage.get('cronicas.backend') || fallback;
@@ -18,10 +33,12 @@ let busy = false;
 let resuming = false;
 let generation = 0;
 const forms = ['create-form', 'join-form', 'character-form'];
-function status(name, message, error = false) {
+
+function status(name, message, error = false, silent = false) {
   const element = byId(`${name}-status`);
   element.textContent = message;
   element.dataset.error = String(error);
+  if (error && message && !silent) sfx('error');
 }
 function connection(message) { byId('connection-status').textContent = message; }
 function closePanels(restore = false) {
@@ -37,6 +54,7 @@ function showScreen(name) {
   closePanels();
   for (const screen of ['home', 'lobby', 'session']) byId(`screen-${screen}`).hidden = screen !== name;
   byId(`${name === 'session' ? 'session' : name}-title`).focus();
+  if (name !== 'session') music('tavern');
 }
 function openPanel(name) {
   closePanels();
@@ -83,6 +101,8 @@ function clearSession() {
   byId('npc-dialog').close();
   byId('npc-form').reset();
   chatMessages.clear(); pendingAction = null;
+  skipTyping(); chatNodes.clear(); chatPrimed = false; newestSeen = 0;
+  typeQueue = Promise.resolve(); rollSoundId = null;
   resetSocial();
   byId('action-form').reset();
   byId('narrative-chat').replaceChildren();
@@ -103,6 +123,8 @@ const labels = {
 };
 function render(room) {
   if (!session) return;
+  const prevPhase = session.room?.phase;
+  const prevTurn = session.room?.turn;
   session.room = room;
   byId('session-code').textContent = room.code;
   byId('session-role').textContent = session.isHost ? 'Anfitrión' : 'Jugador';
@@ -120,14 +142,26 @@ function render(room) {
   byId('world-summary').textContent = `${w.storyName}\n${[w.magicLevel, w.adventureTone, w.mortality].map(v => labels[v] || v).join(' · ')}\nPremisa: ${w.premise || 'No especificada'}\nLíneas rojas: ${w.redLines || 'No especificadas'}\nMotor asíncrono estricto · sin caducidad automática`;
   const nodes = room.members.map(member => {
     const item = document.createElement('li');
-    item.textContent = `${member.name}${member.isNPC ? ' · NPC (controlado por Director)' : ''}${member.isHost ? ' · Anfitrión' : ''}${member.id === session.memberId ? ' · Tú' : ''} — ${member.connected ? 'Conectado' : 'Desconectado (turno conservado)'}${!member.isHost ? ` · ${{ draft: 'Creando personaje', evaluating: 'Evaluando con el DM...', rejected: 'Rechazado: requiere cambios', approved: 'Aprobado' }[member.characterStatus] || 'Creando personaje'}${member.characterName ? ': ' + member.characterName : ''}` : ''}`;
+    item.textContent = `${member.name}${member.isNPC ? ' · NPC (controlado por Director)' : ''}${member.isHost ? ' · Anfitrión' : ''}${member.id === session.memberId ? ' · Tú' : ''} — ${member.connected ? 'Conectado' : 'Desconectado (turno conservado)'}${!member.isHost ? ` · ${{ draft: 'Creando personaje', evaluating: 'Evaluando con el DM...', rejected: 'Rechazado: requiere cambios', approved: 'Aprobado' }[member.characterStatus] \vert{}\vert{} 'Creando personaje'}${member.characterName ? ': ' + member.characterName : ''}` : ''}`;
     return item;
   });
   byId('member-list').replaceChildren(...nodes);
   byId('member-list').parentElement.hidden = starting;
   decorateMembers(byId('member-list'),room.members);
   renderSocial(room);
+  
   renderGame(room);
+  const t = room.turn;
+  music(room.phase === 'playing' && t?.action?.stage === 'awaiting_roll' ? 'tension' : 'tavern');
+  if (room.phase === 'playing' && prevTurn !== t) {
+    if (ownsTurn() && !t.action && (prevPhase !== 'playing' || prevTurn?.version !== t.version)) sfx('turn');
+    const a = t.action;
+    if (a?.rollResults && a.pendingRoll && rollSoundId !== a.id && prevTurn) {
+      rollSoundId = a.id;
+      sfx(a.rollResults.total >= a.pendingRoll.cd_final ? 'success' : 'fail');
+    }
+  }
+
   if (ownMember()?.characterStatus === 'evaluating') status('character', 'El DM está evaluando tu personaje...');
   controls();
 }
@@ -164,7 +198,6 @@ function connect() {
       if (version === generation) accept(data);
     } catch (error) {
       if (version !== generation) return;
-      // No borrar una sesión ante cortes de red o ausencia de confirmación.
       if (!socket.connected || error.message.startsWith('Sin confirmación')) {
         connection('No se pudo recuperar aún. Se reintentará al reconectar.');
         socket.disconnect(); socket.connect();
@@ -178,6 +211,7 @@ function connect() {
   });
   socket.on('disconnect', () => {
     connection('Sin conexión. Reconexión automática; partida y turno conservados en SQLite.'); controls();
+    sfx('error');
   });
   socket.on('room:state', room => {
     if (session && room.code === session.room.code) {
@@ -186,7 +220,13 @@ function connect() {
       if (wasEvaluating && ownMember()?.characterStatus !== 'evaluating' && !busy) recoverDecision();
     }
   });
-  socket.on('social:message',message=> {if(session)addSocial(message);});
+  socket.on('social:message', message => {
+    if (!session) return;
+    addSocial(message);
+    if (message.authorId === session.memberId) return;
+    const whisper = Boolean(message.targetId || message.whisper || message.kind === 'whisper');
+    sfx(whisper ? 'whisper' : 'message');
+  });
   socket.on('room:closed', data => {
     clearSession(); showScreen('lobby'); connection(data.reason); controls();
   });
@@ -197,14 +237,19 @@ function connect() {
   socket.connect(); controls();
 }
 
-function showCharacterDecision(character) {
+function showCharacterDecision(character, withSound = false) {
   const messages = {
     approved: 'El DM aprueba tu personaje: ', rejected: 'El DM rechaza tu personaje: ',
     evaluating: 'El DM sigue evaluando tu personaje...', draft: 'Borrador pendiente de evaluación. '
   };
-  status('character', character.status==='rejected' ? 'Rechazado: '+(character.motivo_rechazo_narrativo||character.narrative||'Revisa tu historia.') : (messages[character.status] || '') + (character.narrative || ''),
-    character.status === 'rejected');
+  const rejected = character.status === 'rejected';
+  status('character', rejected
+    ? 'Rechazado: ' + (character.motivo_rechazo_narrativo || character.narrative || 'Revisa tu historia.')
+    : (messages[character.status] || '') + (character.narrative || ''), rejected, true);
+  if (withSound && rejected) sfx('reject');
+  if (withSound && character.status === 'approved') sfx('approve');
 }
+
 async function recoverDecision() {
   if (!token || !socket?.connected) return;
   const expectedToken = token;
@@ -213,7 +258,7 @@ async function recoverDecision() {
     if (token !== expectedToken || !session) return;
     session.character = data.character;
     render(data.room);
-    if (data.character) showCharacterDecision(data.character);
+    if (data.character) showCharacterDecision(data.character, true);
   } catch { /* Reconectar permite recuperar el resultado guardado. */ }
 }
 
@@ -325,7 +370,7 @@ byId('character-form').addEventListener('submit', event => {
       const data = await request('character:submit', fields);
       if (token !== expectedToken || !session) return;
       session.character = data.character;
-      showCharacterDecision(data.character);
+      showCharacterDecision(data.character, true);
     } catch (error) {
       if (token === expectedToken && session) await recoverDecision();
       throw error;
@@ -358,7 +403,7 @@ byId('leave-button').addEventListener('click', async () => {
   } catch (error) { status('session', error.message, true); }
   finally { busy = false; controls(); }
 });
-// El servidor sigue siendo la autoridad aunque se manipule el DOM.
+
 const chatMessages = new Map();
 let pendingAction = null;
 function ownsTurn() {
@@ -380,18 +425,73 @@ function gameControls(disabled) {
   byId('roll-button').disabled = disabled || rolling;
   byId('roll-button').textContent = rolling ? 'Dados en movimiento…' : cachedRoll(t?.action?.id) ? 'Enviar tirada guardada' : 'Lanzar Dados';
 }
+
+const chatNodes = new Map();
+const typing = new Set();
+let chatPrimed = false, newestSeen = 0, skipEpoch = 0, followChat = true;
+let typeQueue = Promise.resolve();
+function stickBottom() {
+  const c = byId('narrative-chat');
+  if (followChat) c.scrollTop = c.scrollHeight;
+}
+function skipTyping() { skipEpoch++; for (const finish of [...typing]) finish(); }
+function typewrite(el, text, epoch) {
+  return new Promise(resolve => {
+    const done = () => { el.textContent = text; el.classList.remove('typing'); stickBottom(); resolve(); };
+    if (reducedMotion.matches || epoch !== skipEpoch || !el.isConnected) return done();
+    const step = Math.max(1, Math.ceil(text.length / 700)); 
+    let i = 0, ticks = 0;
+    const finish = () => { clearInterval(timer); typing.delete(finish); done(); };
+    const timer = setInterval(() => {
+      if (!el.isConnected) return finish();
+      i = Math.min(text.length, i + step);
+      el.textContent = text.slice(0, i);
+      if (ticks++ % 3 === 0 && !/\s/.test(text[i - 1] || ' ')) sfx('type');
+      stickBottom();
+      if (i >= text.length) finish();
+    }, 22);
+    typing.add(finish);
+  });
+}
+function buildMessage(message, animate) {
+  const item = document.createElement('article'); item.className = 'chat-message'; item.dataset.kind = message.kind;
+  const title = document.createElement('strong');
+  title.textContent = message.authorName + ' · ' + new Date(message.createdAt).toLocaleString();
+  const body = document.createElement('p');
+  if (!animate) body.textContent = message.text;
+  else {
+    const sr = document.createElement('span'); sr.className = 'sr-only'; sr.textContent = message.text;
+    const visual = document.createElement('span'); visual.className = 'typing'; visual.setAttribute('aria-hidden', 'true');
+    body.append(sr, visual); item.classList.add('is-new');
+    const epoch = skipEpoch;
+    typeQueue = typeQueue.then(() => typewrite(visual, message.text, epoch));
+  }
+  item.append(title, body);
+  return item;
+}
 function drawChat() {
   const container = byId('narrative-chat');
   const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
-  const nodes = [...chatMessages.values()].sort((a,b) => a.id-b.id).map(message => {
-    const item = document.createElement('article'); item.className = 'chat-message'; item.dataset.kind = message.kind;
-    const title = document.createElement('strong'); title.textContent = message.authorName + ' · ' + new Date(message.createdAt).toLocaleString();
-    const body = document.createElement('p'); body.textContent = message.text;
-    item.append(title,body); return item;
+  let maxId = newestSeen;
+  const nodes = [...chatMessages.values()].sort((a, b) => a.id - b.id).map(message => {
+    let node = chatNodes.get(message.id);
+    if (!node) {
+      node = buildMessage(message, chatPrimed && message.kind === 'ai' && message.id > newestSeen);
+      chatNodes.set(message.id, node);
+    }
+    maxId = Math.max(maxId, message.id);
+    return node;
   });
-  container.replaceChildren(...nodes);
+  newestSeen = maxId; chatPrimed = true;
+  container.replaceChildren(...nodes); 
   if (nearBottom) container.scrollTop = container.scrollHeight;
 }
+byId('narrative-chat').addEventListener('click', skipTyping);
+byId('narrative-chat').addEventListener('scroll', event => {
+  const c = event.currentTarget;
+  followChat = c.scrollHeight - c.scrollTop - c.clientHeight < 100;
+});
+
 function renderGame(room) {
   if (room.phase !== 'playing') return;
   for (const m of room.messages || []) chatMessages.set(m.id,m);
@@ -416,6 +516,7 @@ function renderGame(room) {
   byId('game-member-list').replaceChildren(...list);
   decorateMembers(byId('game-member-list'),t.order.map(id=>room.members.find(m=>m.id===id)));
 }
+
 let rolling = false;
 function cachedRoll(id) {
   if(!id) return null;
@@ -437,7 +538,7 @@ function renderRoll(action) {
   byId('roll-modifiers').replaceChildren(...nodes);
   const results=action.rollResults || cachedRoll(action.id);
   byId('roll-result').textContent = results
-    ? `Resultados: ${results.resultados.map(r=>`d${r.caras}: ${r.valor}`).join(', ')}. Total: ${results.total}. ${action.rollResults ? (results.total>=config.cd_final ? 'Éxito.' : 'Fallo.') : 'Pendiente de confirmación en servidor.'}`
+    ? `Resultados: ${results.resultados.map(r=>`d${r.caras}:${r.valor}`).join(', ')}. Total: ${results.total}. ${action.rollResults ? (results.total>=config.cd_final ? 'Éxito.' : 'Fallo.') : 'Pendiente de confirmación en servidor.'}`
     : 'Tirada pendiente. No se avanza el turno.';
 }
 byId('roll-button').addEventListener('click',async()=> {
@@ -450,14 +551,13 @@ byId('roll-button').addEventListener('click',async()=> {
     if(!saved) {
       const {rollDice}=await import(diceModuleURL);
       saved=await rollDice(action.pendingRoll.dados_a_lanzar);
-      // Guardar antes del envío: ACK perdido o recarga reenvía, nunca vuelve a lanzar.
       storage.set('cronicas.roll.'+action.id,JSON.stringify(saved));
     }
     if(token!==expectedToken || !session) throw new Error('La sesión ha cambiado.');
     renderRoll(session.room.turn.action);
     await request('roll:submit',{id:action.id,turnVersion:version,...saved,...turnTarget()});
     status('action','Tirada guardada en SQLite. Esperando consecuencia final…');
-    await recoverDecision(); // Recupera state incluso si se perdió un evento.
+    await recoverDecision(); 
   } catch(error) {
     status('action',error.message+' Si hay resultados guardados, vuelve a enviarlos; no repitas el lanzamiento.',true);
     if(token===expectedToken && socket?.connected) await recoverDecision();
@@ -468,7 +568,6 @@ byId('action-form').addEventListener('submit', event => {
   submit('action-form','action',async () => {
     const content = byId('action-text').value.trim();
     const version = session.room.turn.version;
-    // Reusar ID si se perdió el ACK, nunca duplicar la misma solicitud.
     if(!pendingAction || pendingAction.turnVersion !== version || pendingAction.text !== content) {
       pendingAction = {id:crypto.randomUUID(),turnVersion:version,text:content,...turnTarget()};
     }
@@ -496,6 +595,7 @@ byId('history-button').addEventListener('click',async () => {
   } catch(error) { status('action',error.message,true); }
   finally { busy = false; controls(); }
 });
-initSocial();
-connect();
 
+initSocial();
+try { audio?.bindUISounds?.(); } catch { /* Audio opcional. */ }
+connect();
