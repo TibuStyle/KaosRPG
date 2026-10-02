@@ -46,17 +46,25 @@ function openPanel(name) {
   panels[name].querySelector('input').focus();
 }
 function controls() {
+  const evaluating = ownMember()?.characterStatus === 'evaluating';
   const disabled = busy || resuming || !socket?.connected;
   for (const id of forms) {
-    byId(id).querySelector('[type="submit"]').disabled = disabled;
+    byId(id).querySelector('[type="submit"]').disabled = disabled ||
+      (id === 'character-form' && (evaluating || session?.room.phase !== 'lobby'));
     byId(id).setAttribute('aria-busy', String(busy || resuming));
   }
   byId('leave-button').disabled = disabled;
+  byId('start-button').disabled = disabled || !session?.room.canStart;
 }
+function ownMember() { return session?.room.members.find(m => m.id === session.memberId); }
 function request(event, payload) {
   return new Promise((resolve, reject) => {
     if (!socket?.connected) return reject(new Error('Sin conexión con el servidor.'));
-    socket.timeout(10000).emit(event, payload, (error, response) => {
+    const requestSocket = socket;
+    const version = generation;
+    requestSocket.timeout(event === 'character:submit' ? 60000 : 10000).emit(event, payload, (error, response) => {
+      if (version !== generation || requestSocket !== socket) return reject(new Error('Conexión sustituida.'));
+      if (event === 'character:submit' && !session) return reject(new Error('La sala ya no está activa.'));
       if (error) return reject(new Error('Sin confirmación del servidor. Comprueba la conexión antes de reintentar.'));
       if (!response?.ok) return reject(new Error(response?.error || 'Respuesta inválida.'));
       resolve(response.data);
@@ -72,6 +80,7 @@ function clearSession() {
   byId('member-list').replaceChildren();
   byId('session-code').textContent = '';
   byId('world-summary').textContent = '';
+  byId('starting-panel').hidden = true; byId('start-button').hidden = true;
 }
 const labels = {
   high: 'Alta Magia', low: 'Baja Magia', none: 'Sin Magia',
@@ -83,17 +92,23 @@ function render(room) {
   session.room = room;
   byId('session-code').textContent = room.code;
   byId('session-role').textContent = session.isHost ? 'Anfitrión' : 'Jugador';
-  byId('session-title').textContent = session.isHost ? 'Sala de Espera' : 'Creación de Personaje';
-  byId('character-panel').hidden = session.isHost;
+  const starting = room.phase === 'starting';
+  byId('session-title').textContent = starting ? 'La partida está comenzando...' :
+    (session.isHost ? 'Sala de Espera' : 'Creación de Personaje');
+  byId('character-panel').hidden = session.isHost || starting;
+  byId('starting-panel').hidden = !starting;
+  byId('start-button').hidden = !session.isHost || starting;
   byId('leave-button').textContent = session.isHost ? 'Cerrar sala para todos' : 'Salir de la sala';
   const w = room.world;
   byId('world-summary').textContent = `${w.storyName}\n${[w.magicLevel, w.adventureTone, w.turnPace, w.mortality].map(v => labels[v] || v).join(' · ')}\nPremisa: ${w.premise || 'No especificada'}\nLíneas rojas: ${w.redLines || 'No especificadas'}\nCaduca: ${new Date(room.expiresAt).toLocaleString()}`;
   const nodes = room.members.map(member => {
     const item = document.createElement('li');
-    item.textContent = `${member.name}${member.isHost ? ' · Anfitrión' : ''}${member.id === session.memberId ? ' · Tú' : ''} — ${member.connected ? 'Conectado' : 'Desconectado (reserva temporal)'}${!member.isHost ? (member.ready ? ` · Personaje enviado: ${member.characterName}` : ' · Creando personaje') : ''}`;
+    item.textContent = `${member.name}${member.isHost ? ' · Anfitrión' : ''}${member.id === session.memberId ? ' · Tú' : ''} — ${member.connected ? 'Conectado' : 'Desconectado (reserva temporal)'}${!member.isHost ? ` · ${{ draft: 'Creando personaje', evaluating: 'Evaluando con el DM...', rejected: 'Rechazado: requiere cambios', approved: 'Aprobado' }[member.characterStatus] || 'Creando personaje'}${member.characterName ? ': ' + member.characterName : ''}` : ''}`;
     return item;
   });
   byId('member-list').replaceChildren(...nodes);
+  if (ownMember()?.characterStatus === 'evaluating') status('character', 'El DM está evaluando tu personaje...');
+  controls();
 }
 function accept(data) {
   token = data.token;
@@ -103,7 +118,7 @@ function accept(data) {
   if (data.character) {
     byId('character-name').value = data.character.name;
     byId('character-history').value = data.character.history;
-    status('character', 'Personaje recuperado. Puedes editarlo y reenviarlo.');
+    showCharacterDecision(data.character);
   }
   showScreen('session');
 }
@@ -142,7 +157,11 @@ function connect() {
     connection('Sin conexión. Reconexión automática; reserva de sesión de 15 minutos.'); controls();
   });
   socket.on('room:state', room => {
-    if (session && room.code === session.room.code) render(room);
+    if (session && room.code === session.room.code) {
+      const wasEvaluating = ownMember()?.characterStatus === 'evaluating';
+      render(room);
+      if (wasEvaluating && ownMember()?.characterStatus !== 'evaluating' && !busy) recoverDecision();
+    }
   });
   socket.on('room:closed', data => {
     clearSession(); showScreen('lobby'); connection(data.reason); controls();
@@ -153,6 +172,27 @@ function connect() {
   });
   socket.connect(); controls();
 }
+
+function showCharacterDecision(character) {
+  const messages = {
+    approved: 'El DM aprueba tu personaje: ', rejected: 'El DM rechaza tu personaje: ',
+    evaluating: 'El DM sigue evaluando tu personaje...', draft: 'Borrador pendiente de evaluación. '
+  };
+  status('character', (messages[character.status] || '') + (character.narrative || ''),
+    character.status === 'rejected');
+}
+async function recoverDecision() {
+  if (!token || !socket?.connected) return;
+  const expectedToken = token;
+  try {
+    const data = await request('session:resume', { token: expectedToken });
+    if (token !== expectedToken || !session) return;
+    session.character = data.character;
+    render(data.room);
+    if (data.character) showCharacterDecision(data.character);
+  } catch { /* Reconectar permite recuperar el resultado guardado. */ }
+}
+
 async function submit(formId, target, action) {
   if (busy || resuming) return;
   if (!byId(formId).reportValidity()) return;
@@ -218,9 +258,26 @@ byId('character-form').addEventListener('submit', event => {
   event.preventDefault();
   const fields = Object.fromEntries(new FormData(event.currentTarget));
   submit('character-form', 'character', async () => {
-    await request('character:submit', fields);
-    status('character', 'Personaje guardado en memoria del servidor. Aprobación de IA pendiente.');
+    const expectedToken = token;
+    try {
+      const data = await request('character:submit', fields);
+      if (token !== expectedToken || !session) return;
+      session.character = data.character;
+      showCharacterDecision(data.character);
+    } catch (error) {
+      if (token === expectedToken && session) await recoverDecision();
+      throw error;
+    }
   });
+});
+byId('start-button').addEventListener('click', async () => {
+  if (busy || resuming || !session?.isHost || !session.room.canStart) return;
+  busy = true; controls();
+  try {
+    const data = await request('adventure:start', {});
+    if (session) render(data.room);
+  } catch (error) { status('session', error.message, true); }
+  finally { busy = false; controls(); }
 });
 byId('copy-code').addEventListener('click', async () => {
   if (!session) return;

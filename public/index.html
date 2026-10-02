@@ -11,14 +11,14 @@
   <script defer src="./main.js"></script>
 </head>
 <body>
-  <header><span class="brand">CRÓNICAS</span><span class="badge">MVP · v1.2 · salas en vivo</span></header>
+  <header><span class="brand">CRÓNICAS</span><span class="badge">MVP · v1.3 · DM de personajes</span></header>
   <p id="connection-status" class="connection muted" role="status" aria-live="polite">Preparando conexión…</p>
   <main>
     <section id="screen-home" class="screen hero" aria-labelledby="home-title">
       <div class="sigil" aria-hidden="true">✧</div>
       <p class="eyebrow">Tu historia empieza con una decisión</p>
       <h1 id="home-title" tabindex="-1">Crónicas</h1>
-      <p class="muted">Crea una sala, reúne a tu grupo y prepara sus personajes. Director de Juego IA y mecánicas: pendientes.</p>
+      <p class="muted">Crea una sala, reúne a tu grupo y prepara sus personajes. El Director de Juego IA evalúa los personajes; la aventura y sus mecánicas siguen pendientes.</p>
       <div class="menu">
         <button id="play-button" class="btn btn-primary" type="button">Jugar</button>
         <button id="options-button" class="btn" type="button">Opciones / Servidor</button>
@@ -44,7 +44,7 @@
       </div>
       <section id="panel-create" class="card panel" aria-labelledby="create-title" hidden>
         <div class="panel-heading"><h3 id="create-title">Preparar historia</h3><button class="btn" type="button" data-close-panel>Cerrar</button></div>
-        <p class="notice">El servidor valida y conserva esta configuración en memoria. Las reglas y líneas rojas todavía no se aplican a una narrativa ni a personajes.</p>
+        <p class="notice">El servidor valida y conserva esta configuración en memoria. El DM de IA evalúa los personajes según estas reglas y prohibiciones. No garantiza detectar todas las infracciones; revisad sus decisiones.</p>
         <form id="create-form" class="form-grid">
           <div><label for="host-name">Tu nombre como anfitrión</label><input id="host-name" name="playerName" maxlength="40" required autocomplete="nickname"></div>
           <div><label for="story-name">Nombre del juego</label><input id="story-name" name="storyName" maxlength="80" required placeholder="Las cenizas de Valdoria"></div>
@@ -60,7 +60,7 @@
             <div><label for="turn-pace">Ritmo de Turnos</label><select id="turn-pace" name="turnPace"><option value="live">En vivo</option><option value="async">Asíncrono/Foro</option></select></div>
             <div><label for="mortality">Mortalidad</label><select id="mortality" name="mortality"><option value="story">Modo Historia</option><option value="relentless">Modo Implacable</option></select></div>
           </div>
-          <div><label for="red-lines">Líneas Rojas (Baneos)</label><textarea id="red-lines" name="redLines" maxlength="4000" rows="5" aria-describedby="red-lines-help"></textarea><p id="red-lines-help" class="help">Opcional, máximo 4000 caracteres. Visible para el grupo; aplicación automática pendiente.</p></div>
+          <div><label for="red-lines">Líneas Rojas (Baneos)</label><textarea id="red-lines" name="redLines" maxlength="4000" rows="5" aria-describedby="red-lines-help"></textarea><p id="red-lines-help" class="help">Opcional, máximo 4000 caracteres. Visible para el grupo; se incluyen como prohibiciones estrictas en la evaluación del DM de IA.</p></div>
           <button class="btn btn-primary" type="submit">Validar y crear sala</button>
           <p id="create-status" class="status" role="status" aria-live="polite"></p>
         </form>
@@ -84,23 +84,24 @@
         <p id="session-status" class="status" role="status" aria-live="polite"></p>
         <h3>Configuración del mundo</h3><p id="world-summary"></p>
         <h3>Grupo en tiempo real</h3><ul id="member-list" class="member-list" aria-live="polite" aria-relevant="additions text"></ul>
-        <p class="help">Máximo ocho jugadores más anfitrión. «Enviado» no significa aprobado por IA.</p>
+        <p class="help">Máximo ocho jugadores más anfitrión. Solo los personajes aprobados y conectados permiten empezar. Los rasgos permanecen ocultos.</p>
       </div>
       <section id="character-panel" class="card panel" aria-labelledby="character-title" hidden>
         <h3 id="character-title">Creación de Personaje</h3>
-        <p class="notice">La historia se guarda en memoria del servidor; no se envía al resto del grupo. No hay IA ni aprobación automática. No incluyas datos sensibles.</p>
+        <p class="notice">El backend envía tu nombre e historia, junto con las reglas del mundo, a OpenAI para evaluarlos. Tu historia no se publica al grupo. Todo se guarda temporalmente en RAM. No incluyas datos sensibles.</p>
         <form id="character-form" class="form-grid">
           <div><label for="character-name">Nombre del Personaje</label><input id="character-name" name="name" maxlength="60" required autocomplete="off"></div>
-          <div><label for="character-history">Historia del personaje</label><textarea id="character-history" name="history" maxlength="6000" rows="12" required aria-describedby="character-help"></textarea><p id="character-help" class="help">Texto libre, hasta 6000 caracteres. Puedes editar y volver a enviar.</p></div>
+          <div><label for="character-history">Historia del personaje</label><textarea id="character-history" name="history" maxlength="6000" rows="12" required aria-describedby="character-help"></textarea><p id="character-help" class="help">Texto libre, hasta 6000 caracteres. Puedes editar y volver a evaluar antes de empezar. Cada envío aceptado para evaluación puede generar coste de API.</p></div>
           <button class="btn btn-primary" type="submit">Enviar Personaje</button>
           <p id="character-status" class="status" role="status" aria-live="polite"></p>
         </form>
       </section>
-      <div class="actions"><button id="leave-button" class="btn" type="button">Salir de la sala</button></div>
+      <section id="starting-panel" class="card panel" aria-live="polite" hidden><h3>La partida está comenzando...</h3><p class="muted">Vista temporal. Narrativa, turnos y tiradas todavía pendientes.</p></section>
+      <div class="actions"><button id="start-button" class="btn btn-primary" type="button" hidden disabled>Empezar Aventura</button><button id="leave-button" class="btn" type="button">Salir de la sala</button></div>
     </section>
     <noscript><p class="notice">Activa JavaScript para jugar.</p></noscript>
   </main>
-  <footer>Dados 3D · mapas · Director de Juego IA — pendientes</footer>
+  <footer>Dados 3D · mapas · DM de personajes activo · motor de aventuras pendiente</footer>
   <dialog id="options-dialog" aria-labelledby="options-title">
     <h2 id="options-title">Opciones / Servidor</h2>
     <form id="server-form" class="form-grid">

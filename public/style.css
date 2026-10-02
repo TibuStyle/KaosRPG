@@ -63,3 +63,5 @@
 .panel-heading .btn { width:auto; margin:0; }
 [aria-busy="true"] { cursor:progress; }
 @media(max-width:640px) { .connection { padding:0 18px; } }
+
+#starting-panel { text-align:center; border-color:var(--accent); }
