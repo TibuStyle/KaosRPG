@@ -83,3 +83,4 @@ async function buildDice(options={}) {
 }
 if(require.main===module) buildDice().catch(e=>{console.error(e);process.exitCode=1;});
 module.exports={buildDice};
+
