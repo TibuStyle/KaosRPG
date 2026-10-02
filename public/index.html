@@ -87,7 +87,7 @@
       </div>
       <section id="character-panel" class="card panel" aria-labelledby="character-title" hidden>
         <h3 id="character-title">Creación de Personaje</h3>
-        <p class="notice">El backend envía tu nombre e historia, junto con las reglas del mundo, a OpenAI para evaluarlos. Tu historia no se publica al grupo. El estado se guarda de forma persistente en SQLite. No incluyas datos sensibles.</p>
+        <p class="notice">El backend envía tu nombre e historia, junto con las reglas del mundo, a Google Gemini para evaluarlos. Tu historia no se publica al grupo. El estado se guarda de forma persistente en SQLite. No incluyas datos sensibles.</p>
         <form id="character-form" class="form-grid">
           <div><label for="character-name">Nombre del Personaje</label><input id="character-name" name="name" maxlength="60" required autocomplete="off"></div>
           <div><label for="character-history">Historia del personaje</label><textarea id="character-history" name="history" maxlength="6000" rows="12" required aria-describedby="character-help"></textarea><p id="character-help" class="help">Texto libre, hasta 6000 caracteres. Puedes editar y volver a evaluar antes de empezar. Cada envío aceptado para evaluación puede generar coste de API.</p></div>
