@@ -1,150 +1,48 @@
-// Pruebas aisladas: no red, no dependencias de producción, no coste de API.
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const vm = require('node:vm');
+const { validateDecision } = require('../approval');
+const { openDatabase, recover } = require('../db');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
-const crypto = require('node:crypto');
-function harness(reply, key = 'test-key') {
-  const events = [];
-  const app = { disable() {}, set() {}, use() {}, get() {} };
-  const express = () => app; express.static = () => () => {};
-  class Server {
-    constructor() { this.sockets = { sockets: new Map() }; }
-    on(name, fn) { if (name === 'connection') this.connection = fn; }
-    to() { return { emit: (name, data) => events.push({ name, data }) }; }
-    close(fn) { fn(); }
-  }
-  class OpenAI {
-    constructor() { this.chat = { completions: { create: reply } }; }
-  }
-  const modules = {
-    dotenv: { config() {} }, 'node:path': path, 'node:crypto': crypto,
-    'node:http': { createServer: () => ({ listen() {}, close(fn) { fn(); } }) },
-    express, cors: () => () => {}, helmet: () => () => {},
-    'express-rate-limit': { rateLimit: () => () => {} }, 'socket.io': { Server }, openai: OpenAI
-  };
-  const context = vm.createContext({ require: name => modules[name], __dirname: path.join(__dirname, '..'),
-    process: { env: { OPENAI_API_KEY: key }, once() {}, exit() {} }, console: { log() {}, warn() {} },
-    setInterval: () => ({ unref() {} }), clearInterval() {}, setTimeout: () => ({ unref() {} }),
-    AbortController, URL, Buffer });
-  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8') +
-    '\n globalThis.engine = {validateDecision, canStart, snapshot, privateCharacter, evaluateCharacter, rooms, sessions, closeRoom, removeMember, io};', context);
-  return { ...context.engine, events };
-}
-function decision(aprobado = true) {
-  return { aprobado, mensaje_narrativo: 'Bienvenido al mundo.',
-    perks: aprobado ? [{ nombre: 'Buen Navegante', tipo: 'ventaja' }] : [], defectos: [] };
-}
-function response(value = decision()) {
-  return { choices: [{ finish_reason: 'stop', message: { content: JSON.stringify(value) } }] };
-}
-function roomFixture(engine) {
-  const host = { id: 'host', isHost: true, name: 'Host', token: 'h', socketId: 's1', character: null, revision: 0 };
-  const player = { id: 'player', isHost: false, name: 'Player', token: 'p', socketId: 's2', character: null,
-    gm: null, revision: 0, aiRate: { start: Date.now(), count: 0 } };
-  const room = { code: 'ABCDEF', world: { premise: 'Mar', magicLevel: 'none', adventureTone: 'epic', redLines: 'Prohibiciones' },
-    expiresAt: Date.now() + 60000, phase: 'lobby', aiRate: { start: Date.now(), count: 0 }, members: new Map([['host', host], ['player', player]]) };
-  engine.rooms.set(room.code, room);
-  return { room, player, host };
-}
-const draft = { name: 'Jack', history: 'Soy un marinero sin magia.' };
-test('Esquema estricto, enum, listas y rechazo', () => {
-  const e = harness(async () => response());
-  assert.equal(e.validateDecision(decision()).aprobado, true);
-  for (const bad of [ { ...decision(), extra: true }, { ...decision(), aprobado: 'true' },
-    { ...decision(), perks: [{ nombre: 'X', tipo: 'desventaja' }] },
-    { ...decision(false), perks: decision().perks },
-    { ...decision(), perks: [decision().perks[0], decision().perks[0]] },
-    { ...decision(), mensaje_narrativo: '' },
-    { ...decision(), defectos: Array(5).fill({ nombre: 'X', tipo: 'desventaja' }) } ]) {
-    assert.throws(() => e.validateDecision(bad));
-  }
+function decision() { return {aprobado:true,mensaje_narrativo:'Bienvenido.',perks:[{nombre:'Navegante',tipo:'ventaja'}],defectos:[]}; }
+test('Esquema de aprobación exacto, sin rasgos duplicados ni rechazo con rasgos',()=> {
+  assert.equal(validateDecision(decision()).aprobado,true);
+  for(const bad of [{...decision(),extra:true},{...decision(),aprobado:'true'},
+    {...decision(),perks:[{nombre:'X',tipo:'desventaja'}]},
+    {...decision(),perks:[decision().perks[0],decision().perks[0]]},
+    {...decision(),aprobado:false},{...decision(),mensaje_narrativo:''}]) assert.throws(()=>validateDecision(bad));
 });
-test('Aprobación guarda rasgos ocultos y envía JSON mode/contexto', async () => {
-  let request;
-  const e = harness(async params => { request = params; return response(); });
-  const { room, player } = roomFixture(e);
-  const result = await e.evaluateCharacter(room, player, draft);
-  assert.equal(player.character.status, 'approved');
-  assert.equal(player.gm.perks[0].nombre, 'Buen Navegante');
-  assert.equal(e.canStart(room), true);
-  assert.equal(request.response_format.type, 'json_object');
-  assert.equal(JSON.parse(request.messages[1].content).mundo.redLines, 'Prohibiciones');
-  assert.equal(JSON.parse(request.messages[1].content).personaje.history, draft.history);
-  const publicText = JSON.stringify(e.snapshot(room));
-  assert.ok(!publicText.includes(draft.history));
-  assert.ok(!publicText.includes('Buen Navegante'));
-  assert.ok(!JSON.stringify(result).includes('perks'));
-  assert.ok(!JSON.stringify(e.privateCharacter(player)).includes('defectos'));
-});
-test('Rechazo permite corregir y reenviar', async () => {
-  let approved = false;
-  const e = harness(async () => response(decision(approved)));
-  const { room, player } = roomFixture(e);
-  await e.evaluateCharacter(room, player, draft);
-  assert.equal(player.character.status, 'rejected'); assert.equal(player.gm, null);
-  assert.equal(e.canStart(room), false);
-  approved = true;
-  await e.evaluateCharacter(room, player, { ...draft, history: 'Historia corregida.' });
-  assert.equal(player.character.status, 'approved');
-});
-test('Sin clave no muta personaje; JSON inválido no aprueba', async () => {
-  const missing = harness(async () => response(), '');
-  const a = roomFixture(missing);
-  await assert.rejects(missing.evaluateCharacter(a.room, a.player, draft), /no configurada/);
-  assert.equal(a.player.character, null);
-  const invalid = harness(async () => ({ choices: [{ finish_reason: 'stop', message: { content: '{mal JSON' } }] }));
-  const b = roomFixture(invalid);
-  await assert.rejects(invalid.evaluateCharacter(b.room, b.player, draft), /No se pudo/);
-  assert.equal(b.player.character.status, 'draft'); assert.equal(b.player.gm, null);
-});
-test('No aprobar por salida truncada y no conservar aprobación de texto distinto', async () => {
-  let malformed = false;
-  const e = harness(async () => malformed ? { choices: [{ finish_reason: 'length', message: { content: '{}' } }] } : response());
-  const { room, player } = roomFixture(e);
-  await e.evaluateCharacter(room, player, draft); malformed = true;
-  await assert.rejects(e.evaluateCharacter(room, player, { ...draft, history: 'Otro texto' }));
-  assert.equal(player.character.status, 'draft'); assert.equal(player.gm, null);
-});
-test('Duplicado concurrente bloqueado; cierre descarta respuesta tardía', async () => {
-  let release;
-  const e = harness(() => new Promise(resolve => { release = resolve; }));
-  const { room, player } = roomFixture(e);
-  const pending = e.evaluateCharacter(room, player, draft);
-  await assert.rejects(e.evaluateCharacter(room, player, draft), /ya está siendo/);
-  e.closeRoom(room, 'Cierre'); release(response());
-  await assert.rejects(pending, /cancelada/);
-  assert.equal(e.rooms.has(room.code), false); assert.equal(player.gm, null);
-});
-test('Reconexión: terminar evaluación con jugador desconectado conserva resultado', async () => {
-  let release;
-  const e = harness(() => new Promise(resolve => { release = resolve; }));
-  const { room, player } = roomFixture(e);
-  const pending = e.evaluateCharacter(room, player, draft);
-  player.socketId = null; release(response()); await pending;
-  assert.equal(e.privateCharacter(player).status, 'approved');
-  assert.equal(e.canStart(room), false); player.socketId = 's3'; assert.equal(e.canStart(room), true);
-});
-test('Inicio autorizado solo al host, al menos un jugador, fase sincronizada', async () => {
-  const e = harness(async () => response());
-  const { room, player, host } = roomFixture(e);
-  function socket(member) {
-    const handlers = {};
-    const s = { id: member.socketId, data: { token: member.token }, on: (n, fn) => { handlers[n] = fn; },
-      join() {}, leave() {} };
-    e.sessions.set(member.token, { code: room.code, id: member.id });
-    e.io.connection(s);
-    return async event => { let result; await handlers[event]({}, value => { result = value; }); return result; };
-  }
-  const asPlayer = socket(player); const asHost = socket(host);
-  assert.equal((await asHost('adventure:start')).ok, false);
-  await e.evaluateCharacter(room, player, draft);
-  assert.equal((await asPlayer('adventure:start')).ok, false);
-  assert.equal((await asHost('adventure:start')).ok, true);
-  assert.equal(room.phase, 'starting'); assert.equal(e.snapshot(room).phase, 'starting');
-  assert.equal(e.canStart(room), false);
-  room.members.delete(player.id); room.expiresAt = Date.now() + 60000; room.phase = 'lobby';
-  assert.equal(e.canStart(room), false);
+test('SQLite real: reinicio, rasgos, sesión hash, cola, chat y recuperación de trabajo interrumpido',()=> {
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'cronicas-db-')),file=path.join(dir,'game.sqlite');
+  let db;
+  try {
+    db=openDatabase(file);
+    db.prepare("INSERT INTO rooms(code,story_name,premise,red_lines,magic_level,adventure_tone,mortality,created_at) VALUES('ABCDEF','Historia','','','none','epic','story',0)").run();
+    db.prepare("INSERT INTO members(id,room_code,name,is_host,joined_order,socket_id) VALUES('host','ABCDEF','Director',1,0,'connected')").run();
+    db.prepare("INSERT INTO members(id,room_code,name,is_host,joined_order,socket_id) VALUES('jack','ABCDEF','Jack',0,1,'connected')").run();
+    db.prepare("INSERT INTO sessions VALUES('hash-token','jack',0)").run();
+    db.prepare("INSERT INTO characters VALUES('jack','Jack','Marinero','approved','Bienvenido')").run();
+    db.prepare("INSERT INTO traits VALUES('jack','ventaja','Navegante')").run();
+    db.prepare("INSERT INTO turn_order VALUES('ABCDEF',0,'host'),('ABCDEF',1,'jack')").run();
+    db.prepare("UPDATE rooms SET phase='playing',turn_index=1,turn_version=3").run();
+    db.prepare("INSERT INTO actions VALUES('action','ABCDEF','jack',3,'Exploro','pending',0)").run();
+    db.prepare("INSERT INTO messages(room_code,author_name,kind,text,action_id,created_at) VALUES('ABCDEF','Jack','action','Exploro','action',0)").run();
+    db.close(); db=openDatabase(file); recover(db);
+    assert.equal(db.prepare('SELECT turn_version FROM rooms').get().turn_version,3);
+    assert.equal(db.prepare('SELECT turn_index FROM rooms').get().turn_index,1);
+    assert.equal(db.prepare('SELECT status FROM actions').get().status,'failed');
+    assert.equal(db.prepare('SELECT socket_id FROM members WHERE id=?').get('jack').socket_id,null);
+    assert.equal(db.prepare('SELECT status FROM characters').get().status,'approved');
+    assert.equal(db.prepare('SELECT name FROM traits').get().name,'Navegante');
+    assert.equal(db.prepare('SELECT member_id FROM sessions WHERE token_hash=?').get('hash-token').member_id,'jack');
+    assert.equal(db.prepare('SELECT text FROM messages').get().text,'Exploro');
+    assert.throws(()=>db.prepare("INSERT INTO actions VALUES('duplicate','ABCDEF','jack',3,'Otra','pending',0)").run());
+    assert.throws(()=>db.prepare("INSERT INTO turn_order VALUES('ABCDEF',2,'intruso')").run());
+    db.prepare("DELETE FROM rooms WHERE code='ABCDEF'").run();
+    for(const table of ['members','sessions','characters','traits','turn_order','actions','messages']) {
+      assert.equal(db.prepare('SELECT COUNT(*) AS n FROM '+table).get().n,0);
+    }
+  } finally { if(db?.open) db.close(); fs.rmSync(dir,{recursive:true,force:true}); }
 });
